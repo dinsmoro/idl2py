@@ -1,9 +1,9 @@
 # idl2py
 Converts (some) IDL to Python
 
-Use the .bat on Windows to drop **IDL** `.pro` files to be converted to **Python** `.py` files.
+Use the `.bat` on Windows to drop **IDL** `.pro` files onto. They will be automagically be converted to **Python** `.py` files.
 
-Or enter the fileName after the except: near the bottom of the file and run the `idl2py.py` file directly.
+Or enter the fileName after the except: near the bottom of the `idl2py.py` file and run the `idl2py.py` file directly.
 
 You can provide **IDL** libaries your `.pro` files call in a folder called `libs`. There is no order needed inside the folder `libs` except for your sanity.
 
