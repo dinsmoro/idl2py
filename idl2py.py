@@ -8,6 +8,7 @@ def strreplace( strang, start, stop, insert ): # Cause Pyhton is silly
     # insert needs to be same length as start and stop
     return strang[0:start]+insert+strang[stop:]
 # END DEF
+strrep = strreplace; # Alias name
 def strreplace1( strang, indx, insert ): # Cause Pyhton is silly
     # insert needs to be same length as start and stop
     return strang[0:indx]+insert+strang[indx+1:]
@@ -134,7 +135,7 @@ def end_finder( strang, findr, skipums ):
     # END IF
     
     if( findr != ' ' ):
-        strang = strang.rstrip(' '); # Remove spaces to help finding every other character
+        strang = strang.rstrip(' ').rstrip('\t'); # Remove spaces to help finding every other character
     # END IF
     if( len(strang) > 0 ):
         return strang[-1] == findr
@@ -156,7 +157,7 @@ def avoider_finder( strang, skipums ):
     return min(skipt)
 # END DEF
 
-def regex_avoid(regexStr, strang, skipums, FLG_rev = False, FLG_logic = False, stepUp=None):
+def regex_avoid(regexStr, strang, skipums, stepUp=None, FLG_rev = False, FLG_logic = False, FLG_nukeSkipums=False, FLG_enableStrangExclusion=True):
     if( len(strang) > 0 ):
         if( stepUp is not None ):
             regexr_list = re.findall(regexStr, strang[stepUp:]); # search only finds the 1st, find as many to deal with unique issues
@@ -196,19 +197,38 @@ def regex_avoid(regexStr, strang, skipums, FLG_rev = False, FLG_logic = False, s
             fixr = 0; # Start this up
             # Identify no go zones
             nogo = [[], []]; # Prime list of lists
-            # --- First apostrophes since they can hold anything, including # ---
-            while( strang[fixr:].find("'") > -1 ):
-                # Apophuph time
-                regexr = re.search(r'\'.*?\'', strang[fixr:]); # Watch fixr
-                
-                if( regexr is not None ): # regexr is none if apophuph are unbalanced (so not a string)
-                    nogo[0].append(regexr.start() + fixr); # Tack
-                    nogo[1].append(regexr.end() + fixr - 1); # Tack
-                    fixr += regexr.end(); # Move up
-                else:
-                    fixr += strang[fixr:].find("'") + 1; # Move past to yeet
-                # END IF
-            # END WHILE
+            nogo_tagger = []; # Prime the nogo tagger
+            if( FLG_enableStrangExclusion == True ):
+                # --- First apostrophes since they can hold anything, including # ---
+                while( strang[fixr:].find("'") > -1 ):
+                    # Apophuph time
+                    regexr = re.search(r'\'.*?\'', strang[fixr:]); # Watch fixr
+                    
+                    if( regexr is not None ): # regexr is none if apophuph are unbalanced (so not a string)
+                        nogo[0].append(regexr.start() + fixr); # Tack
+                        nogo[1].append(regexr.end() + fixr - 1); # Tack
+                        nogo_tagger.append('apophuph'); # Tag
+                        fixr += regexr.end(); # Move up
+                    else:
+                        fixr += strang[fixr:].find("'") + 1; # Move past to yeet
+                    # END IF
+                # END WHILE
+                # --- Second quotes since they can hold anything too, including # ---
+                fixr = 0; # Reset
+                while( strang[fixr:].find('"') > -1 ):
+                    # Apophuph time
+                    regexr = re.search(r'".*?"', strang[fixr:]); # Watch fixr
+                    
+                    if( regexr is not None ): # regexr is none if quotes are unbalanced (so not a string)
+                        nogo[0].append(regexr.start() + fixr); # Tack
+                        nogo[1].append(regexr.end() + fixr - 1); # Tack
+                        nogo_tagger.append('apophuph'); # Tag
+                        fixr += regexr.end(); # Move up
+                    else:
+                        fixr += strang[fixr:].find('"') + 1; # Move past to yeet
+                    # END IF
+                # END WHILE
+            # END IF
             
             if( skipums is not None ):
                 fixr = 0; # Reset
@@ -232,6 +252,7 @@ def regex_avoid(regexStr, strang, skipums, FLG_rev = False, FLG_logic = False, s
                             # END FOR jj
                             nogo[0].append(skipzLoc); # Add these bois on
                             nogo[1].append(newlineLoc);
+                            nogo_tagger.append('skipums'); # Tag
                             
                             fixr = skipzLoc + 1; # Move past it
                             skipzLoc = strang[fixr:].find(skipz);
@@ -245,10 +266,24 @@ def regex_avoid(regexStr, strang, skipums, FLG_rev = False, FLG_logic = False, s
                             # END FOR jj
                             nogo[0].append(skipzLoc); # Add these bois on
                             nogo[1].append(len(strang));
+                            nogo_tagger.append('skipums'); # Tag
                             skipzLoc = -1; # Exit out
                         # END IF
                     # END WHILE
                 # END FOR skipz
+            # END IF
+            
+            if( FLG_nukeSkipums ):
+                for jk in range(len(nogo_tagger)-1, -1 ,-1):
+                    if( nogo_tagger[jk] == 'skipums' ):
+                        if( (stepUp is None) or ((stepUp is not None) and (nogo[0][jk] < stepUp)) ): # Only nuke if not stepping past (should not happen but whatever)
+                            strang = strang[:nogo[0][jk]]; # Gulag the skipums
+                            nogo_tagger.pop(jk); # Delete now that it's been permanantly applied
+                            nogo[0].pop(jk); # Yeet into the sun
+                            nogo[1].pop(jk); # Bye Felicia
+                        # END IF
+                    # END IF
+                # END FOR jk
             # END IF
             
             if( stepUp is not None ):
@@ -325,6 +360,16 @@ def regex_avoid(regexStr, strang, skipums, FLG_rev = False, FLG_logic = False, s
 
 def regex_avoid_logic(regexStr, strang, skipums, FLG_rev = False):
     return regex_avoid(regexStr, strang, skipums, FLG_rev = False, FLG_logic = True) # Call this
+# END DEF
+
+def endOfTheLiner(strang): # Removes rogue $ from combined lines that need to go for future lines (mostly applicable to if/else stuff that needs to be shattered)
+    regexr_newLine = regex_avoid(r'\s+\$\s+(?:$|;|[a-zA-Z]+)', strang, None); # Else call out because it supports a common newline else split
+    return strang[:regexr_newLine.start()] + strang[regexr_newLine.start():regexr_newLine.end()].replace('$','') + strang[regexr_newLine.end():] # Build around it 
+# END DEF
+
+def newLineCleaner(strang):
+    regexr_newliner = regex_avoid(r'^\s*\$\s*\n\s*', strang, None); # Get it
+    return strrep(strang, regexr_newliner.start(), regexr_newliner.end(), '') # DITCH it
 # END DEF
 
 def splitterz(strang, splitter, splitums):
@@ -434,20 +479,70 @@ def parenthesis_hunter( strang, charbroil=['(',')'] ):
     return -1
 # END DEF
 
-def apophuph_hunter( strang, charbroil="'" ): # Like the parenthesis hunter, but for symmetrical stuff
+def apophuph_hunter( strang, charbroil=["'",'"'], charall=False ): # Like the parenthesis hunter, but for symmetrical stuff
     # Finds the index of the last matching apophuph
-    p_start = strang.find(charbroil)+1; # Go time
-    parent_to_end = 1; # Set the number to 1
-    for jj in range(p_start, len(strang)): # Simpler b/c no nested strings
-        if( strang[jj] == charbroil ):
-            parent_to_end -= 1 ; # It goes down
-        # END IF
-        if( parent_to_end == 0 ): # Closed the loop
-            return jj # Did it
-        # END IF
-    # END FOR jj
-    # Got to here, did not close the loop
-    return -1
+    if( charall == False ):
+        # Determine if we start with ' or "
+        charcheck = [None for _ in range(0, len(charbroil))]; # Prep
+        for jj in range(0, len(charbroil)):
+            charcheck[jj] = strang.find(charbroil[jj]); # Check if it occurs
+            if( charcheck[jj] == -1 ):
+                charcheck[jj] = len(strang); # Move it out so we don't find it as the lowest value
+            # END IF
+        # END FOR jj
+        charcheck = charcheck.index(min(charcheck)); # Get the lowest value
+    
+    
+        p_start = strang.find(charbroil[charcheck])+1; # Go time
+        parent_to_end = 1; # Set the number to 1
+        for jj in range(p_start, len(strang)): # Simpler b/c no nested strings
+            if( strang[jj] == charbroil[charcheck] ):
+                parent_to_end -= 1 ; # It goes down
+            # END IF
+            if( parent_to_end == 0 ): # Closed the loop
+                return jj # Did it
+            # END IF
+        # END FOR jj
+        
+        # Got to here, did not close the loop
+        return -1
+    else:
+        # Fire it up
+        p_start = 0; # Prep
+        
+        while( (p_start > -1) and (p_start < len(strang)) ):           
+            # Determine if we start with ' or "
+            charcheck = [None for _ in range(0, len(charbroil))]; # Prep
+            for jj in range(0, len(charbroil)):
+                charcheck[jj] = strang[p_start:].find(charbroil[jj]); # Check if it occurs
+                if( charcheck[jj] == -1 ):
+                    charcheck[jj] = len(strang); # Move it out so we don't find it as the lowest value
+                # END IF
+            # END FOR jj
+            charcheck = charcheck.index(min(charcheck)); # Get the lowest value
+            
+            if( strang[p_start:].find(charbroil[charcheck]) > 0 ):
+                p_start = strang[p_start:].find(charbroil[charcheck])+1+p_start; # Go time
+                parent_to_end = 1; # Set the number to 1
+                for jj in range(p_start, len(strang)): # Simpler b/c no nested strings
+                    if( strang[jj] == charbroil[charcheck] ):
+                        parent_to_end -= 1 ; # It goes down
+                    # END IF
+                    if( parent_to_end == 0 ): # Closed the loop
+                        p_start = jj+1; # Move up
+                        break;
+                    # END IF
+                # END FOR jj
+                if( parent_to_end != 0 ):
+                    p_start = -1; # Escape
+                # END IF
+            else:
+                p_start = len(strang); # Escape, no more
+            # END IF
+        # END WHILE
+        
+        return p_start
+    # END IF
 # END DEF
 
 def if_hunter( listOstrangs, indx, straddlers, skipums, recursiveMode=False ):
@@ -518,11 +613,374 @@ def if_hunter( listOstrangs, indx, straddlers, skipums, recursiveMode=False ):
     # END IF
 # END DEF
 
+def recursive_ifer(strang, lineStarter=0, recursiveIf=0, if_aligner={}, skipums=None):
+    # if( 'else begin' in strang ):
+    #     breakpoint()
+    if_aligner[recursiveIf] = {}; # Prepare a dict to untangle this if chain
+    recursiveIf_subset = recursiveIf; # Link for now
+    strangNow = strang[lineStarter:]; # Get the strang to work with now
+    # Identify if
+    regexr_ifThen = regex_avoid(r'(?:^\s*|\s+\$\s*)(?:el@)?if(?:\s+\$\s*\n\s*|\s+)[\s\S]+?(?:\s+\$\s*\n\s*|\s+)then(?:\s+\$\s*\n\s*|\s+)', strangNow.lower(), skipums); # Detect if .. then AND if .. then begin, treat them the same
+    regexr_ifThen_start = regex_avoid(r'^\s*(?:el@)?if(?:\s+\$\s*\n\s*$|\s+)', strangNow[:regexr_ifThen.end()].lower(), skipums); # Detect start of if .. then
+    regexr_justThen = regex_avoid(r'(?:\s+\$\s*\n\s*$|\s+)then(?:\s+\$\s*\n\s*$|\s+)', strangNow[:regexr_ifThen.end()].lower(), skipums); # Detect if .. then AND if .. then begin, treat them the same
+    
+    # Record if statement
+    if_aligner[recursiveIf]['if'] = [strangNow[regexr_ifThen_start.end():regexr_justThen.start()]]; # Get the bit
+    if( regex_avoid_logic(r'^\s*el@if(?:\s+\$\s*\n\s*$|\s+)', strangNow[:regexr_ifThen.end()].lower(), skipums) ):
+        if_aligner[recursiveIf]['if'].append( 'elif' ); # Label as elif
+    else:
+        if_aligner[recursiveIf]['if'].append( 'if' ); # Label as if
+    # END IF
+
+    # Identify then
+    regexr_ifThenIf = regex_avoid(r'^(?:\s+\$\s*\n\s*|\s+)then(?:\s+\$\s*\n\s*|\s+)(?:el@)?if(?:\s+\$\s*\n\s*|\s+)', strangNow[regexr_justThen.start():].lower(), skipums); # Detect subset ifs
+    if( regexr_ifThenIf is not None ):
+        # Then holds a recursive if
+        recursiveIf_subset += 1; # Increment the subset
+        if_aligner[recursiveIf], lineEnder = recursive_ifer(strangNow, lineStarter=regexr_justThen.end(), recursiveIf=recursiveIf_subset, if_aligner=if_aligner[recursiveIf], skipums=skipums); # Recurse
+        if_aligner[recursiveIf]['then'] = recursiveIf_subset; # Record that the "then" is the if statement at recursiveIf_subset
+        lineEnder += regexr_justThen.end(); # Set up so it covers the correct length
+    else:
+        regexr_ifThenElse = regex_avoid(r'^(?:\s*\$\s*\n\s*|\s*)(?:el@)?if(?:\s+\$\s*\n\s*|\s+)[\s\S]+?(?:\s+\$\s*\n\s*|\s+)then(?:\s+\$\s*\n\s*|\s+)[\s\S]+?(?:(?:\s+\$\s*\n\s*|\s+)else(?:\s+\$\s*\n\s*|\s+)|$)', strangNow.lower(), None); # Detect subset ifs
+        regexr_ifThenElse_justElse = regex_avoid(r'(?:\s+\$\s*\n\s*|\s+)else(?:\s+\$\s*\n\s*|\s+)$', regexr_ifThenElse.group().lower(), None); # Detect subset ifs
+        if( regexr_ifThenElse_justElse is not None ):
+            # Uses else
+            if_aligner[recursiveIf]['then'] = strangNow[regexr_justThen.end():regexr_ifThenElse_justElse.start()]; # Remove the else and got the then
+            regexr_newLineYeet = regex_avoid(r'(?:\s*\$\s*\n\s*$|\s*\$\s*;)', if_aligner[recursiveIf]['then'] , None); # Detect subset ifs
+            if( regexr_newLineYeet is not None ):
+                if_aligner[recursiveIf]['then'] = strrep(if_aligner[recursiveIf]['then'], regexr_newLineYeet.start(), regexr_newLineYeet.end(), regexr_newLineYeet.group().replace('$','') ); # Yeet the line continuation
+            # END IF
+            lineEnder = regexr_ifThenElse_justElse.start(); # Set the subset
+        else:
+            # End of the line, no else
+            if_aligner[recursiveIf]['then'] = strangNow[regexr_justThen.end():]; # Just get the whole thing if no else
+            lineEnder = len(strangNow); # To the end of the strang now
+        # END IF
+    # END IF
+    
+    # Identify else
+    if( lineEnder != len(strangNow) ): # Only else if we're not at the end
+        regexr_ifElseIf = regex_avoid(r'^(?:\s*\$\s*\n\s*|\s*)else(?:\s+\$\s*\n\s*|\s+)(?:el@)?if(?:\s+\$\s*\n\s*|\s+)', strangNow[lineEnder:].lower(), skipums); # Detect subset ifs
+        regexr_ifElse = regex_avoid(r'^(?:\s*\$\s*\n\s*|\s*)else(?:\s+\$\s*\n\s*|\s+)', strangNow[lineEnder:].lower(), skipums); # Detect subset ifs
+        regexr_ifElseBegin = regex_avoid(r'^(?:\s*\$\s*\n\s*|\s*)else(?:\s+\$\s*\n\s*|\s+)begin(?:\s*\$\s*\n\s*$|\s*$)', strangNow[lineEnder:].lower(), skipums); # Detect subset ifs
+        if( regexr_ifElseBegin is None ): # Do not look into it if it is `else begin` which starts a new line, the if stuff here is insane
+            if( regexr_ifElseIf is not None ):
+                # Then holds a recursive if
+                recursiveIf_subset += 1; # Increment the subset
+                if_aligner[recursiveIf], lineEnder = recursive_ifer(strangNow, lineStarter=lineEnder+regexr_ifElse.end(), recursiveIf=recursiveIf_subset, if_aligner=if_aligner[recursiveIf], skipums=skipums); # Recurse
+                if_aligner[recursiveIf]['else'] = recursiveIf_subset; # Record that the "else" is the if statement at recursiveIf_subset
+                lineEnder += regexr_ifElse.end(); # Set up so it covers the correct length
+            else:
+                regexr_ifElse = regex_avoid(r'^(?:\s*\$\s*\n\s*|\s*)else(?:\s+\$\s*\n\s*|\s+)', strangNow[lineEnder:].lower(), skipums); # Detect subset ifs
+                regexr_ifElse_justElse = regex_avoid(r'(?:\s+\$\s*\n\s*|\s+)(?:else(?:\s+\$\s*\n\s*|\s+)|$)', strangNow[lineEnder+regexr_ifElse.end():].lower(), skipums); # Detect subset ifs
+                if( regexr_ifElse_justElse is not None ):
+                    # Extra else afterwards
+                    if_aligner[recursiveIf]['else'] = strangNow[lineEnder+regexr_ifElse.end():lineEnder+regexr_ifElse.end()+regexr_ifElse_justElse.start()]; # Remove the else and got the then
+                    lineEnder += regexr_ifElse.end()+regexr_ifElse_justElse.start(); # Set the subset
+                else:
+                    # End of the line, no else
+                    if_aligner[recursiveIf]['else'] = strangNow[lineEnder+regexr_ifElse.end():]; # Just get the whole thing if no else
+                    lineEnder = len(strangNow); # To the end of the strang now
+                # END IF
+            # END IF
+        else:
+            if_aligner[recursiveIf]['else'] = -1; # Set to -1 to show to skip
+            lineEnder = len(strangNow); # To the end of the strang now
+        # END IF
+    # END IF
+
+    return if_aligner, lineEnder
+# END DEF
+def recursive_ifserter(if_aligner, line2inert=[], FLG_inertEndelse=0):
+    # Tackle if
+    line2inert.append( if_aligner['if'][1]+' '+if_aligner['if'][0]+' then begin' ); # Insert if statement
+    # Tack then
+    if( isinstance(if_aligner['then'], int) ):
+        # If integer, it's a nested if statement
+        line2inert, FLG_inertEndelse = recursive_ifserter(if_aligner[if_aligner['then']], line2inert=line2inert, FLG_inertEndelse=FLG_inertEndelse); # Insert the nested if
+    else:
+        line2inert.append( if_aligner['then'] ); # Insert then
+    # END IF
+    # Tackle else
+    if( 'else' in if_aligner ):
+        line2inert.append( 'endif else begin' ); # Set up the else
+        if( isinstance(if_aligner['else'], int) ):
+            if( if_aligner['else'] != -1 ):
+                # If integer, it's a nested if statement
+                line2inert, FLG_inertEndelse = recursive_ifserter(if_aligner[if_aligner['else']], line2inert=line2inert, FLG_inertEndelse=FLG_inertEndelse); # Insert the nested if
+                if( if_aligner[if_aligner['else']]['else'] != -1 ):
+                    line2inert.append( 'endelse' ); # Finish it off
+                else:
+                    FLG_inertEndelse += 1; # Increment
+                # END IF
+            # END IF
+        else:
+            line2inert.append( if_aligner['else'] ); # Insert else
+            line2inert.append( 'endelse' ); # Finish it off
+        # END IF
+    else:
+        line2inert.append( 'endif' ); # Finish it off
+    # END IF
+    
+    if( FLG_inertEndelse > 1 ):
+        breakpoint() # Shouldn't happen, but just for future debug
+    return line2inert, FLG_inertEndelse
+# END DEF
+
+def funFinder(funs2find, fileRN, sourceDir, libDir, convertedDir, codez, importedMemory, importOffset, proctedPy_lower, skipums):
+    # Look for IDL files around
+    files2heck = glob(os.path.join(sourceDir,'**', '*.pro'), recursive=True); #Find the IDL 
+    
+    # Roll through the IDL files to try to find the functions
+    for filez in files2heck:
+        if( len(funs2find) == 0 ):
+            break; # Escape, we found 'em all we're done
+        # END IF
+        
+        fileName_now = os.path.splitext(os.path.basename(filez))[0]; # Declare the file name now
+        importedMemory_local = []; # Allows for batching up multiple imports from one file
+        
+        # --- Read in IDL file ---
+        with open(filez, 'r') as file:
+            idl_fun = [line.rstrip() for line in file];
+        # END WITH
+        
+        jk = 0; # Prep for while loop
+        while( jk < len(idl_fun) ):
+            bevItDown = idl_fun[jk]; # Yoink the line        
+            # --- Detect line continuation, combine ---
+            while( end_finder(idl_fun[jk], '$', skipums) ):
+                jk += 1; # Increment
+                if( regex_avoid_logic(r'\$', idl_fun[jk], skipums) and (not regex_avoid_logic(r'\$ *$', idl_fun[jk], skipums)) and (not regex_avoid_logic(r';', idl_fun[jk], None)) ):
+                    # Requires patching, apparently in IDL you can end a line continuation with a comment without needing the comment ;, coding to support that would be annoying - so I don't!
+                    # regexr = regex_avoid(r'\$', mirrorU(idl_fun[jk]), None); # Get where $ at
+                    # dollaLoc = len(idl_fun[jk]) - regexr.end(); # Un-mirror-universe it
+                    regexr = regex_avoid(r'\$', idl_fun[jk], skipums, FLG_rev=True); # Get where $ at
+                    idl_fun[jk] = strinsert(idl_fun[jk], regexr.start()+1, ' ;'); # Insert a comment
+                # END IF            
+                bevItDown += '\n '+idl_fun[jk]; # Tack on more!
+            # END WHILE
+            regexr = regex_avoid(r'\$+? *?;+?.*?\n+?', bevItDown, None); # Find comments on line continuations, which are illegal in Python (full lazy mode)
+            while( regexr is not None ):
+                lostComment = bevItDown[regexr.start()+1:regexr.end()-1]; # Catch that lost comment
+                bevItDown = strreplace(bevItDown, regexr.start(), regexr.end(), '$\n'); # Laser eyes the lost comment
+                bevItDown += lostComment; # Slap it at the end, which is cool
+                
+                regexr = regex_avoid(r'\$+? *?;+?.*?\n+?', bevItDown, None); # Find comments on line continuations, which are illegal in Python (full lazy mode)
+            # END IF
+            
+            regexr_pro = regex_avoid(r'^\s*pro +', bevItDown.lower(), skipums); # Regex it
+            regexr_fun = regex_avoid(r'^\s*function +', bevItDown.lower(), skipums); # Regex it
+            if( (regexr_pro is not None) or (regexr_fun is not None) ):
+                if( regexr_pro is not None ):
+                    pro = regexr_pro.start(); # Find pro occurance
+                    pro_len = regexr_pro.end() - regexr_pro.start();
+                else:
+                    pro = regexr_fun.start(); # Find other fun occurance
+                    pro_len = regexr_fun.end() - regexr_fun.start();
+                # END IF
+                
+                bevItDown = strreplace( bevItDown, pro, pro+pro_len, 'def.' ); # Replace pro with def (standardizes it)
+                regexr_defy = regex_avoid(r'^\s*def.\w+,', bevItDown, skipums); # Regex it
+                if( regexr_defy is not None ):
+                    defy = regexr_defy.end() - 1; # Find 1st comma occurance, signals function name
+                else:
+                    regexr_defy = regex_avoid(r'^\s*def.\w+', bevItDown, skipums); # Regex it - there may be no comma in super special instances apparently
+                    defy = regexr_defy.end(); # No comma, go to end
+                # END IF
+                # builtIns.append(bevItDown[4:defy]); # Function name right now, add it to the built-ins
+                funName_now = bevItDown[4:defy].lower(); # It's the fun name right now
+                if( funName_now in funs2find ):
+                    # Go convert that file that has the function def we want
+                    
+                    # --- Rip into it ---
+                    if( (fileName_now not in convertedCache) and (fileName_now != fileRN) ): # Extra bit to prevent recursion
+                        # Even if it is already converted, need defy_report to know if things are 
+                        print('\n--- ON '+os.path.basename(filez)+' ---');
+                        codez_fun, defy_report_fun = trans( idl_fun, fileRN = fileName_now, sourceDir = sourceDir, libDir = libDir, convertedDir = convertedDir); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
+                        convertedCache[fileName_now] = {'report':defy_report_fun}; # Cache it for later, only need this thing to convert a function
+
+                        # --- Save converted Python ---
+                        # finds = glob(os.path.join(convertedDir,'**',fileName_now+'.py'), recursive=True); # Glob it up (this was to check if already had it written, but it might need updating or something so might as well just do it)
+                        if( libDir == None ):
+                            with open(os.path.join(convertedDir,fileName_now+'.py'), 'w') as file:
+                                file.write('\n'.join(linez for linez in codez_fun));
+                            # END WITH
+                        else:
+                            with open(os.path.join(libDir,fileName_now+'.py'), 'w') as file:
+                                file.write('\n'.join(linez for linez in codez_fun));
+                            # END WITH
+                        # END IF
+                    # END IF
+                    
+                    # --- Insert the import as needed ---
+                    if( funName_now not in importedMemory ):
+                        importedMemory.append(funName_now); # Add it on
+                        if( funName_now in proctedPy_lower ): # We will be back if someone uses the variable "False" I think, or "None"
+                            importedMemory_local.append(funName_now+'y'); # Add it on, but with a y to avoid protected names
+                        else:
+                            importedMemory_local.append(funName_now); # Add it on
+                        # END IF
+                    # END IF
+                    
+                    # Remove it from the list of functions to find
+                    funs2find.remove(funName_now); # Ditch it
+                # END IF
+            # END IF
+            
+            jk += 1; # Increment up
+        # END WHILE
+        
+        # --- Insert the import as needed ---
+        if( len(importedMemory_local) > 0 ):
+            if( libDir == None ):
+                codez.insert(0, 'from '+fileName_now+' import '+', '.join(importedMemory_local) ); # Get the import at the top
+            else:
+                if( convertedDir == libDir ):
+                    codez.insert(0, 'from '+fileName_now+' import '+', '.join(importedMemory_local) ); # Get the import at the top
+                else:
+                    codez.insert(0, 'from '+os.path.basename(libDir)+'.'+fileName_now+' import '+', '.join(importedMemory_local) ); # Get the import at the top
+                # END IF
+            # END IF
+            importOffset += 1; # Increment the offset
+            importedMemory.append(funName_now); # Add it on
+        # END IF
+    # END FOR filez
+    if( len(funs2find) != 0 ):
+        breakpoint()
+        print('WARNING: Function(s) "'+str(funs2find)+'" was(were) not found in the libs!');
+        print('Ignoring. Find the source .pro file(s) containing this(these) function(s) and this incantation will transform it(them) too!\n');
+    # END IF
+    
+    return codez, importedMemory, importOffset
+# END DEF
+
+def globalFinder(global2find, fileRN, sourceDir, libDir, convertedDir, skipums):
+    # Look for IDL files around
+    files2heck = glob(os.path.join(sourceDir,'**', '*.pro'), recursive=True); #Find the IDL 
+    # Roll through the IDL files to try to find the global vars
+    globz = []; # Prep a list to hold the findings
+    FLG_introspection = False; # Turn off introspection to start, not technically needed since a function should always preceed a common call, but it's just good to have it here
+    for filez in files2heck:
+        
+        fileName_now = os.path.splitext(os.path.basename(filez))[0]; # Declare the file name now
+        
+        # --- Read in IDL file ---
+        with open(filez, 'r') as file:
+            idl_fun = [line.rstrip() for line in file];
+        # END WITH
+        
+        jk = 0; # Prep for while loop
+        while( jk < len(idl_fun) ):
+            bevItDown = idl_fun[jk]; # Yoink the line        
+            # --- Detect line continuation, combine ---
+            while( end_finder(idl_fun[jk], '$', skipums) ):
+                jk += 1; # Increment
+                if( regex_avoid_logic(r'\$', idl_fun[jk], skipums) and (not regex_avoid_logic(r'\$ *$', idl_fun[jk], skipums)) and (not regex_avoid_logic(r';', idl_fun[jk], None)) ):
+                    # Requires patching, apparently in IDL you can end a line continuation with a comment without needing the comment ;, coding to support that would be annoying - so I don't!
+                    # regexr = regex_avoid(r'\$', mirrorU(idl_fun[jk]), None); # Get where $ at
+                    # dollaLoc = len(idl_fun[jk]) - regexr.end(); # Un-mirror-universe it
+                    regexr = regex_avoid(r'\$', idl_fun[jk], skipums, FLG_rev=True); # Get where $ at
+                    idl_fun[jk] = strinsert(idl_fun[jk], regexr.start()+1, ' ;'); # Insert a comment
+                # END IF            
+                bevItDown += '\n '+idl_fun[jk]; # Tack on more!
+            # END WHILE
+            regexr = regex_avoid(r'\$+? *?;+?.*?\n+?', bevItDown, None); # Find comments on line continuations, which are illegal in Python (full lazy mode)
+            while( regexr is not None ):
+                lostComment = bevItDown[regexr.start()+1:regexr.end()-1]; # Catch that lost comment
+                bevItDown = strreplace(bevItDown, regexr.start(), regexr.end(), '$\n'); # Laser eyes the lost comment
+                bevItDown += lostComment; # Slap it at the end, which is cool
+                
+                regexr = regex_avoid(r'\$+? *?;+?.*?\n+?', bevItDown, None); # Find comments on line continuations, which are illegal in Python (full lazy mode)
+            # END IF
+            
+            # --- Get function name, so we can call it right as needed ---
+            regexr_pro = regex_avoid(r'^\s*pro +', bevItDown.lower(), skipums); # Regex it
+            regexr_fun = regex_avoid(r'^\s*function +', bevItDown.lower(), skipums); # Regex it
+            if( (regexr_pro is not None) or (regexr_fun is not None) ):
+                if( regexr_pro is not None ):
+                    pro = regexr_pro.start(); # Find pro occurance
+                    pro_len = regexr_pro.end() - regexr_pro.start();
+                else:
+                    pro = regexr_fun.start(); # Find other fun occurance
+                    pro_len = regexr_fun.end() - regexr_fun.start();
+                # END IF
+                
+                bevItDown = strreplace( bevItDown, pro, pro+pro_len, 'def.' ); # Replace pro with def (standardizes it)
+                regexr_defy = regex_avoid(r'^\s*def.\w+,', bevItDown, skipums); # Regex it
+                if( regexr_defy is not None ):
+                    defy = regexr_defy.end() - 1; # Find 1st comma occurance, signals function name
+                else:
+                    regexr_defy = regex_avoid(r'^\s*def.\w+', bevItDown, skipums); # Regex it - there may be no comma in super special instances apparently
+                    defy = regexr_defy.end(); # No comma, go to end
+                # END IF
+                # builtIns.append(bevItDown[4:defy]); # Function name right now, add it to the built-ins
+                funName_now = bevItDown[4:defy].lower(); # It's the fun name right now
+                FLG_introspection = False; # Turn off introspection, new function new globals
+            # END IF
+            
+            # --- Check for the common var declaration ---
+            regexr_common = regex_avoid(r'^\s*common +', bevItDown.lower(), skipums); # Regex it
+            if( regexr_common is not None ):
+                globz_now = bevItDown[regexr_common.end():].split(','); # Get the globz now
+                globz_now = [strang.lower().replace('$\n','').strip() for strang in globz_now]; # Make sure it's in good form
+                if( globz_now[0] == global2find ):
+                    globz.append( {'fileName': fileName_now, 'filePath':filez, 'funName': funName_now, 'var': globz_now[1:].copy(), 'varNum': len(globz_now[1:]), 'decl': 0} ); # Create a dict to hold global info
+                    FLG_introspection = True; # Turn on introspection
+                    varnar = globz_now[1:].copy(); # Get the variables to check for in this global var usage to see if it is just using it or if it is declaring it
+                # END IF
+            # END IF
+            
+            # --- Check for how the common vars are used if introspection is on ---
+            if( FLG_introspection == True ):
+                for i in range(len(varnar)-1, -1, -1):
+                    regexr_varnar = regex_avoid(r'^\s*'+varnar[i]+r'\s*=', bevItDown.lower(), skipums); # Regex it
+                    if( regexr_varnar is not None ):
+                        globz[-1]['decl'] += 1; # Increment the declaration
+                        varnar.pop(i); # Ditch it so we don't double count a var being modified again
+                    # END IF
+                # END FOR i
+            # END IF
+            
+            jk += 1; # Increment up
+        # END WHILE
+    # END FOR filez
+    
+    # --- Determine which use of the global var is the definition because whyyy design your language clearly ---
+    FLG_use2use = [None, None]; # Prep which one to use
+    for i in range(0, len(globz)):
+        if( globz[i]['decl'] > 0 ):
+            if( FLG_use2use[0] is None ):
+                FLG_use2use[0] = i; # Record which to use
+                FLG_use2use[1] = globz[i]['decl']; # Record how many
+            else:
+                if( FLG_use2use[1] < globz[i]['decl'] ):
+                    FLG_use2use[0] = i; # Record which to use
+                    FLG_use2use[1] = globz[i]['decl']; # Record how many
+                elif( FLG_use2use[1] == globz[i]['decl'] ):
+                    breakpoint() # DOUBLE DRAOGN??
+                # END IF
+            # END IF
+            if( globz[i]['decl'] > globz[i]['varNum'] ):
+                breakpoint() # Errner
+            # END IF
+        # END IF
+    # END FOR i
+    
+    if( FLG_use2use[0] == None ):
+        print('WARNING: Global var "'+global2find+'" was not found in the libs! That set will not be imported as a global var!');
+        return None
+    else:
+        return globz[FLG_use2use[0]]
+    # END IF
+# END DEF
+
+
 #!!!
-def trans( idl, libDir = None ):
+def trans( idl, fileRN = None, sourceDir = None, libDir = None, convertedDir = None ):
     # --- Prime reusables ---
     straddlers = [' ',',','+','=','-','*','/','^','<','>','[',']','(',')',':','\t','&','\'','"'] # These things can be right next to vars
-    builtIns = ['print', 'message', 'printf', 'help', 'plot', 'xyouts', 'window', 'catch', 'strput', 'strcompress', 'readcol', 'sxaddpar', 'remchar']; # These are built-in functions that are not external functions
+    builtIns = ['print', 'message', 'printf', 'help', 'plot', 'oplot', 'xyouts', 'window', 'catch', 'strput', 'strcompress', 'readcol', 'sxaddpar', 'remchar', 'return']; # These are built-in functions that are not external functions
     forceImport = ['sphdist']; # These are called like a function() but aren't built-in functions but need to be imported, IDL tho am i right
     skipums = [';']; # These are things that allow for anyhting to be printed, so skip em and don't analyse
     skipums_py = ['#']; # These are things that allow for anyhting to be printed, so skip em and don't analyse
@@ -536,9 +994,11 @@ def trans( idl, libDir = None ):
     spacer = 0; # Keep track of spacing
     codez = []; # No idea how big
     importz = {}; # Supported imports go here, tick to True when used and imported - autofilled, bottom reader deals with actual support for importing
-    straddlersR = ''.join(straddlers).replace('+',r'\+').replace('-',r'\-').replace('*',r'\*').replace('[',r'\[').replace(']',r'\]').replace('(',r'\(').replace(')',r'\)'); # The straddlers in regex-friendly-form
-    global convertedCache; # Summon the cache across multiple runs (so subcalls know about the cache)
+    straddlersR = ''.join(straddlers).replace('+',r'\+').replace('-',r'\-').replace('*',r'\*').replace('[',r'\[').replace(']',r'\]').replace('(',r'\(').replace(')',r'\)').replace('^',r'\^'); # The straddlers in regex-friendly-form
+    global convertedCache; # Summon the cache across multiple runs (so subcalls know about the cache) - for converted functions
+    global globalCache; # Summon the cache across multiple runs (so subcalls know about the cache) - for global variable declarations (they can have aliases, be reused, etc.)
     convertedCache_local = {}; # Prime this, this is functions local to this thing
+    importedMemory = []; # Remembers if a called function is imported (helps with calling multiple times)
     # Fixers for horrible code consistency in IDL
     FLG_IF_open = 0;
     FLG_ELSE_open = 0;
@@ -554,6 +1014,23 @@ def trans( idl, libDir = None ):
     FLG_FUN_idl_strcompress = False;    
     FLG_FUN_idl_plt_gifWriter = False;
     FLG_FUN_idl_convol = False;
+    FLG_FUN_idl_shft = False;
+    
+    # --- Prime Regexrz ---
+    regexr_varFinder_eq = re.compile(r'^\s*[a-zA-Z]+\s*='); # An easy declaration to find
+    regexr_varFinder_ifthen = re.compile(r'\sthen\s+[a-zA-Z]+\s*='); # A more difficult declaration to divine (for in-line if statements)
+    
+    # --- Prep Directory Work ---
+    if( sourceDir is not None ):
+        cwd = sourceDir; # Use sourceDir as the current working dir if supplied
+    else:
+        cwd = os.getcwd(); # Get the current working dir if sourceDir not supplied
+    # END IF
+    if( convertedDir is not None ):
+        convwd = convertedDir; # Use convertedDir as the converted working dir if supplied
+    else:
+        convwd = os.getcwd(); # Get the current working dir if sourceDir not supplied
+    # END IF
     
     # --- Nuke things that are not applicable to python ---
     for i in range(len(idl)-1, -1, -1):
@@ -572,17 +1049,32 @@ def trans( idl, libDir = None ):
             # END IF
         # END IF
         
+        # --- A focused fix for @something stuff that I can't find what it does because you can't search symbols on search engines or the IDL docs ---
+        if( regex_avoid_logic(r'^\s*@', idl[i], None) ):
+            idl.pop(i); # Yeet into the aether
+        # END IF
+        
         # --- This fix is for apparently print statements strings DON'T NEED TO BE ENDED --------
-        regexr_hangingStrang = regex_avoid( r'^\s*print *,', idl[i].lower(), skipums ); # Get to it
+        regexr_hangingStrang = regex_avoid( r'(?:^|:)\s*print *,', idl[i].lower(), skipums ); # Get to it
         if( regexr_hangingStrang is not None ):
             if( idl[i].find("'") > -1 ): # You can print just variables no strings, so don't add to those
-                make_sure_it_match = apophuph_hunter( idl[i][regexr_hangingStrang.end():] ); # Get to it
+                make_sure_it_match = apophuph_hunter( idl[i][regexr_hangingStrang.end():], charbroil=["'"], charall=True ); # Get to it
                 if( make_sure_it_match == -1 ):
                     regexr_comment = regex_avoid(r';', idl[i], None); # Regex it
                     if( regexr_comment is not None ):
                         idl[i] = strinsert( idl[i], regexr_comment.start()-1, "'"); # Jam it
                     else:
                         idl[i] += "'"; # Slam it
+                    # END IF
+                # END IF
+            elif( idl[i].find('"') > -1 ): # You can print just variables no strings, so don't add to those
+                make_sure_it_match = apophuph_hunter( idl[i][regexr_hangingStrang.end():], charbroil=['"'], charall=True ); # Get to it
+                if( make_sure_it_match == -1 ):
+                    regexr_comment = regex_avoid(r';', idl[i], None); # Regex it
+                    if( regexr_comment is not None ):
+                        idl[i] = strinsert( idl[i], regexr_comment.start()-1, '"'); # Jam it
+                    else:
+                        idl[i] += '"'; # Slam it
                     # END IF
                 # END IF
             # END IF
@@ -593,7 +1085,7 @@ def trans( idl, libDir = None ):
         if( remove_comma is not None ):
             idl[i] = strreplace( idl[i], remove_comma.end()-1, remove_comma.end(), '');
         # END IF
-        remove_caps = regex_avoid(r'^\s*RETURN', idl[i], skipums);
+        remove_caps = regex_avoid(r'^\s*RETURN(?:\s|$)', idl[i], skipums);
         if( remove_caps is not None ):
             idl[i] = strreplace( idl[i], remove_caps.end()-6, remove_caps.end(), 'return');
         # END IF
@@ -604,6 +1096,7 @@ def trans( idl, libDir = None ):
     i = 0; # While loop so i shennanigans can occur
     while( i < len(idl) ):
         bevItUp = idl[i]; # Yoink the line
+        
         # --- Detect line continuation, combine ---
         while( end_finder(idl[i], '$', skipums) ):
             i += 1; # Increment
@@ -646,20 +1139,26 @@ def trans( idl, libDir = None ):
     i = 0; # While loop so i shennanigans can occur
     while( i < len(idl) ):
         FLG_spacer = 0; # Set the spacing flag
-        bevItUp = idl[i]; # Yoink the line        
+        bevItUp = idl[i]; # Yoink the line
         addr = 0; # Record how much
         # --- Detect line continuation, combine ---
-        while( end_finder(idl[i], '$', skipums) ):
+        FLG_lineCont = False; # Prep the flag
+        while( end_finder(idl[i], '$', skipums) or FLG_lineCont ): # Empty lines are just wrapped into this or (idl[i] == '')
             i += 1; # Increment
             addr += 1; # Increment
-            if( regex_avoid_logic(r'\$', idl[i], skipums) and (not regex_avoid_logic(r'\$ *$', idl[i], skipums)) and (not regex_avoid_logic(r';', idl[i], None)) ):
-                # Requires patching, apparently in IDL you can end a line continuation with a comment without needing the comment ;, coding to support that would be annoying - so I don't!
-                # regexr = regex_avoid(r'\$', mirrorU(idl[i]), None); # Get where $ at
-                # dollaLoc = len(idl[i]) - regexr.end(); # Un-mirror-universe it
-                regexr = regex_avoid(r'\$', idl[i], skipums, FLG_rev=True); # Get where $ at
-                idl[i] = strinsert(idl[i], regexr.start()+1, ' ;'); # Insert a comment
-            # END IF            
-            bevItUp += '\n '+idl[i]; # Tack on more!
+            if( re.search(r'^\s*$', idl[i]) is None ):
+                if( regex_avoid_logic(r'\$', idl[i], skipums) and (not regex_avoid_logic(r'\$ *$', idl[i], skipums)) and (not regex_avoid_logic(r';', idl[i], None)) ):
+                    # Requires patching, apparently in IDL you can end a line continuation with a comment without needing the comment ;, coding to support that would be annoying - so I don't!
+                    # regexr = regex_avoid(r'\$', mirrorU(idl[i]), None); # Get where $ at
+                    # dollaLoc = len(idl[i]) - regexr.end(); # Un-mirror-universe it
+                    regexr = regex_avoid(r'\$', idl[i], skipums, FLG_rev=True); # Get where $ at
+                    idl[i] = strinsert(idl[i], regexr.start()+1, ' ;'); # Insert a comment
+                # END IF            
+                bevItUp += '\n '+idl[i]; # Tack on more!
+                FLG_lineCont = False; # Set the flag
+            else:
+                FLG_lineCont = True; # Set the flag for an empty line, skip by it
+            # END IF
         # END WHILE
         regexr = regex_avoid(r'\$+? *?;+?.*?\n+?', bevItUp, None); # Find comments on line continuations, which are illegal in Python (full lazy mode)
         while( regexr is not None ):
@@ -674,7 +1173,69 @@ def trans( idl, libDir = None ):
         # --- Deal with function definition (pro) lines ---
         regexr_pro = regex_avoid(r'^\s*pro +', bevItUp.lower(), skipums); # Regex it
         regexr_fun = regex_avoid(r'^\s*function +', bevItUp.lower(), skipums); # Regex it
-        if( (regexr_pro is not None) or (regexr_fun is not None) ):
+        regexr_funfwd = regex_avoid(r'^\s*forward_function +', bevItUp.lower(), skipums); # Regex it
+        regexr_common = regex_avoid(r'^\s*common +', bevItUp.lower(), skipums); # Regex it
+        if( regexr_funfwd is not None ):
+            # forward_function declares functions that are used in the file, so track them down and try to make sure they're there
+            cntr = 0; # Prep a cntr
+            funs2find = []; # Make a list of functions to find
+            regexr = regex_avoid(r'[a-zA-Z0-9_]+\s*(?:$|[,\s$\\n]+)', bevItUp[regexr_funfwd.end():], skipums); # Regex it
+            while( regexr is not None ):
+                funs2find.append( regexr.group().replace(',','').replace(' ','').replace('$','').replace('\n','') ); #Record the function to find
+                cntr += regexr.end(); # Move it up
+                regexr = regex_avoid(r'[a-zA-Z0-9_]+\s*(?:$|[,\s$\\n]+)', bevItUp[regexr_funfwd.end() + cntr:], skipums); # Regex it
+            # END WHILE
+            funs2find = [funz.lower() for funz in funs2find]; # IDL doesn't do case I think (p sure)
+            
+            codez, importedMemory, importOffset = funFinder(funs2find, fileRN, sourceDir, libDir, convertedDir, codez, importedMemory, importOffset, proctedPy_lower, skipums); # Find those functions!
+            
+            bevItUp = "'''$\n"+bevItUp+"$\n'''"; # Comment out the block but keep it for posterity
+        elif( regexr_common is not None ):
+            globalz = [strang.strip().lower() for strang in bevItUp[regexr_common.end():].split(',')]; # Get the string broken out, 1st is var set name, 2nd is vars used [no comment hanlding rn hope that doesn't come back to bite]
+            if( globalz[0] not in globalCache ):
+                # Build out
+                globtrot = globalFinder(globalz[0], fileRN, sourceDir, libDir, convertedDir, skipums); # Go get the global set name into the globalCache
+                if( globtrot is not None ):
+                    globalCache[globalz[0]] = {'fileName': globtrot['fileName'], 'funName': globtrot['funName'], 'vars': globtrot['var']}; # Record what we need to build the import call to yield `from FILENAME import FUNNAME.vars# as var#here`
+                    
+                    # Now make sure the function has been converted so it can be imported successfully
+                    if( globalCache[globalz[0]]['fileName'] not in convertedCache ):
+                    
+                        # --- Read in IDL file ---
+                        with open(globtrot['filePath'], 'r') as file: # use 1st hit
+                            idl_fun = [line.rstrip() for line in file];
+                        # END WITH
+                        
+                        # --- Rip into it ---
+                        # Even if it is already converted, need defy_report to know if things are 
+                        print('\n--- ON '+globtrot['filePath']+' ---');
+                        codez_fun, defy_report_fun = trans( idl_fun, fileRN = globalCache[globalz[0]]['fileName'], sourceDir = sourceDir, libDir = libDir, convertedDir = convertedDir); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
+                        convertedCache[globalCache[globalz[0]]['fileName']] = {'report':defy_report_fun}; # Cache it for later, only need this thing to convert a function
+                        
+                        # --- Save converted Python ---
+                        # finds = glob(os.path.join(convwd,'**',globalCache[globalz[0]]['fileName']+'.py'), recursive=True); # Glob it up (this was to check if already had it written, but it might need updating or something so might as well just do it)
+                        if( libDir == None ):
+                            with open(os.path.join(convwd,globalCache[globalz[0]]['fileName']+'.py'), 'w') as file:
+                                file.write('\n'.join(linez for linez in codez_fun));
+                            # END WITH
+                        else:
+                            with open(os.path.join(libDir,globalCache[globalz[0]]['fileName']+'.py'), 'w') as file:
+                                file.write('\n'.join(linez for linez in codez_fun));
+                            # END WITH
+                         # END IF
+                     # END IF
+                else:
+                    globalCache[globalz[0]] = None; # Nothing here
+                # END IF
+            # END IF
+            bevItUp = '; '+bevItUp; # Comment out the line
+            # Build em out
+            if( globalCache[globalz[0]] is not None ): # If we didn't find a match, just comment out the line
+                for jt in range(1, len(globalz)): # Count from 1 b/c 1st entry is the global var name set (in IDL)
+                    codez.append(' '*spacer+'from '+globalCache[globalz[0]]['fileName']+'.'+globalCache[globalz[0]]['funName']+' import '+globalCache[globalz[0]]['vars'][jt-1]+' as '+globalz[jt] ); # Get the import at the top
+                # END FOR jt
+            # END IF
+        elif( (regexr_pro is not None) or (regexr_fun is not None) ):
             if( regexr_pro is not None ):
                 pro = regexr_pro.start(); # Find pro occurance
                 pro_len = regexr_pro.end() - regexr_pro.start();
@@ -727,7 +1288,7 @@ def trans( idl, libDir = None ):
             # END WHILE
             defy_outs = []; # Who knows!
             defy_unused = []; # It happens
-            importedMemory = []; # Remembers if a called function is imported (helps with calling multiple times)
+            # importedMemory = []; # Remembers if a called function is imported (helps with calling multiple times)
             FLG_plt_windowCalled = False; # Prime the window remeberall based on the function
             FLG_plt_gifWriter = False; # Prime the gif writer rememberall
             FLG_plt_gifWriter_names = []; # Important if multiple gif writers are used at once, can it happen? Maybe?
@@ -738,21 +1299,35 @@ def trans( idl, libDir = None ):
             # FLG_case_thenWithNoBegin = False; # Prime the case including a begin call rememerall
             FLG_caseIf = False; #it's a case if which means it's weird
             # FLG_caseClosed = False; # Prime the case rememberall for if an else call closes the if statement or not
+            FLG_logicMech = {'if':0, 'else': 0, 'case': 0, 'for': 0}; # If/else/case/for counters to keep track; for the ability to end if/else statements with just END (umpteen curses, etc., etc.)
             
             # Start of function noted
             rando_varr_num = 0; # Increment this as needed
             #--- Scan for end of function to know where it end (allows for multiple functions per file) ---
+            regexr_caseStart = re.compile(r'^\s*case\s+'); # Compile it
+            regexr_caseEnd = re.compile(r'^\s*endcase'); # Compile it
+            # FLG_caseOn = False;
+            dmz_case = []; # Prep a list of lists
+            for jk in range(i+1, len(idl)): # identify CASE statements which end with just END and that breaks FEND
+                if( regexr_caseStart.match(idl[jk]) is not None ):
+                    # FLG_caseOn = True; # Turn on the case
+                    dmz_case.append([jk, -1]); # Tack on a new record
+                # END IF
+                if( regexr_caseEnd.match(idl[jk]) is not None ):
+                    # FLG_caseOn = True; # Turn on the case
+                    dmz_case[-1][1] = jk; # Finish the record out
+                # END IF
+            # END FOR jk
             for jk in range(i+1, len(idl)):
                 # end!
                 regexrL = regex_avoid_logic(r'^\s*end', idl[jk].lower(), skipums) and strisin( idl[jk].lstrip('\t').lstrip(' ').lower(), 'end', straddlers ); # Regex it
-                if( regexrL ):
+                if( regexrL and not any([(jk >= dmz_case[j][0]) and (jk <= dmz_case[j][1]) for j in range(0, len(dmz_case))]) ):
                     fend = jk+1; # Record where the function/PROOO ends (+1 for SLICIN'), use it to limit later stuff
                     break; # ditch it
                 # END IF
             # END FOR jk
             
-            for j in range(0, len(defy_ins)):
-                
+            for j in range(0, len(defy_ins)):                
                 FLG_used = False; # Re-prime this
                 FLG_defaults_neverUsed = False; # Re-prime this
                 
@@ -1030,7 +1605,11 @@ def trans( idl, libDir = None ):
                                         if( libDir == None ):
                                             codez.insert(0, 'from '+funName+' import '+funName ); # Get the import at the top
                                         else:
-                                            codez.insert(0, 'from '+os.path.basename(libDir)+'.'+funName+' import '+funName ); # Get the import at the top
+                                            if( convwd == libDir ):
+                                                codez.insert(0, 'from '+funName+' import '+funName ); # Get the import at the top
+                                            else:
+                                                codez.insert(0, 'from '+os.path.basename(libDir)+'.'+funName+' import '+funName ); # Get the import at the top
+                                            # END IF
                                         # END IF
                                         importOffset += 1; # Increment the offset
                                         importedMemory.append(funName); # Add it on
@@ -1139,7 +1718,7 @@ def trans( idl, libDir = None ):
                             elif( (regexr_fun_avoidRecurse == False ) and (funName not in builtIns) ):
                                 # --- Determine function file and where it at ---
                                 # Look in the library paths
-                                finds = glob(os.path.join(os.getcwd(),'**',funName+'.pro'), recursive=True); # Glob it up
+                                finds = glob(os.path.join(cwd,'**',funName+'.pro'), recursive=True); # Glob it up
                                 if( len(finds) > 0 ):
                                     # --- Read in IDL file ---
                                     with open(finds[0], 'r') as file: # use 1st hit
@@ -1149,13 +1728,13 @@ def trans( idl, libDir = None ):
                                     # --- Rip into it ---
                                     # Even if it is already converted, need defy_report to know if things are 
                                     print('\n--- ON '+finds[0]+' ---');
-                                    codez_fun, defy_report_fun = trans( idl_fun, libDir = libDir ); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
+                                    codez_fun, defy_report_fun = trans( idl_fun, fileRN = finds[0].rstrip('.pro'), sourceDir = sourceDir, libDir = libDir, convertedDir = convertedDir); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
                                     convertedCache[funName] = {'report':defy_report_fun}; # Cache it for later, only need this thing to convert a function
 
                                     # --- Save converted Python ---
-                                    # finds = glob(os.path.join(os.getcwd(),'**',funName+'.py'), recursive=True); # Glob it up (this was to check if already had it written, but it might need updating or something so might as well just do it)
+                                    # finds = glob(os.path.join(convwd,'**',funName+'.py'), recursive=True); # Glob it up (this was to check if already had it written, but it might need updating or something so might as well just do it)
                                     if( libDir == None ):
-                                        with open(os.path.join(os.getcwd(),funName+'.py'), 'w') as file:
+                                        with open(os.path.join(convwd,funName+'.py'), 'w') as file:
                                             file.write('\n'.join(linez for linez in codez_fun));
                                         # END WITH
                                     else:
@@ -1169,7 +1748,11 @@ def trans( idl, libDir = None ):
                                         if( libDir == None ):
                                             codez.insert(0, 'from '+funName+' import '+funName ); # Get the import at the top
                                         else:
-                                            codez.insert(0, 'from '+os.path.basename(libDir)+'.'+funName+' import '+funName ); # Get the import at the top
+                                            if( convwd == libDir ):
+                                                codez.insert(0, 'from '+funName+' import '+funName ); # Get the import at the top
+                                            else:
+                                                codez.insert(0, 'from '+os.path.basename(libDir)+'.'+funName+' import '+funName ); # Get the import at the top
+                                            # END IF
                                         # END IF
                                         importOffset += 1; # Increment the offset
                                         importedMemory.append(funName); # Add it on
@@ -1273,6 +1856,7 @@ def trans( idl, libDir = None ):
                                     
                                     FLG_used = True; # It was used!
                                 else:
+                                    # breakpoint()
                                     print('WARNING: "'+funName+'.pro" was not found in the libs!');
                                     print('Line in question: \n'+idl[jk]);
                                     print('Ignoring. Find it and this incantation will transform it too!\n');
@@ -1397,12 +1981,17 @@ def trans( idl, libDir = None ):
                     # END FOR jk
                     
                     # Time for a big old switcherooo
-                    defy_ins[j] = defy_ins[j].replace(var2check, newbie); # Switcheroo
+                    defy_ins[j] = defy_ins[j].lower().replace(var2check, newbie); # Switcheroo
                     regexr = regex_avoid(var2check+r' *[,=]', bevItUp.lower(), skipums);
-                    if( bevItUp[regexr.end()-1] == '=' ): # Replace defy_ins[j] in bevItUp
-                        bevItUp = strreplace(bevItUp, regexr.start(), regexr.end(), newbie+' ='); # Replace the var name, carefully
+                    if( regexr is not None ):
+                        if( bevItUp[regexr.end()-1] == '=' ): # Replace defy_ins[j] in bevItUp
+                            bevItUp = strreplace(bevItUp, regexr.start(), regexr.end(), newbie+' ='); # Replace the var name, carefully
+                        else:
+                            bevItUp = strreplace(bevItUp, regexr.start(), regexr.end(), newbie+','); # Replace the var name, carefully
+                        # END IF
                     else:
-                        bevItUp = strreplace(bevItUp, regexr.start(), regexr.end(), newbie+','); # Replace the var name, carefully
+                        regexr = regex_avoid(var2check, bevItUp.lower(), skipums);
+                        bevItUp = strreplace(bevItUp, regexr.start(), regexr.end(), newbie); # Replace the var name, carefully
                     # END IF
                     for j in range(0, len(defy_outs)):
                         if( defy_outs[j].find('=') > -1 ):
@@ -1411,7 +2000,7 @@ def trans( idl, libDir = None ):
                             var2check2 = defy_outs[j].lower(); # Good to go
                         # END IF
                         if( var2check == var2check2 ):
-                            defy_outs[j] = defy_outs[j].replace(var2check2, newbie); # Switcheroo
+                            defy_outs[j] = defy_outs[j].lower().replace(var2check2, newbie); # Switcheroo
                         # END IF
                     # END FOR j
                     for j in range(0, len(defy_unused)):
@@ -1421,7 +2010,7 @@ def trans( idl, libDir = None ):
                             var2check2 = defy_unused[j].lower(); # Good to go
                         # END IF
                         if( var2check == var2check2 ):
-                            defy_unused[j] = defy_unused[j].replace(var2check2, newbie); # Switcheroo
+                            defy_unused[j] = defy_unused[j].lower().replace(var2check2, newbie); # Switcheroo
                         # END IF
                     # END FOR j
                 # END IF
@@ -1535,6 +2124,26 @@ def trans( idl, libDir = None ):
                 # END FOR jk
             # END IF
             
+            # # --- Identify Variables for !Case Consistency! (IDL has no case reqs) and to convert var(index) to var[index] ---
+            # fun_localVars = {}; # Prep a dictionary
+            # for jk in range(i+1, fend):
+            #     # straddlers, skipums
+            #     tmp_regexr = regexr_varFinder_eq.match(idl[jk]); # Look for a variable tell-tale
+            #     if( tmp_regexr is not None ):
+            #         tmp_localVar = tmp_regexr.group()[:-1].strip(); # Get the variable in question
+            #         if( tmp_localVar.lower() not in fun_localVars ):
+            #             fun_localVars[tmp_localVar.lower()] = tmp_localVar; # Record the variable and the first way it was used (to retain capitalization but make it consistent)
+            #         # END IF
+            #     # END IF
+            #     tmp_regexr = regexr_varFinder_ifthen.search(idl[jk]); # Look for a variable tell-tale
+            #     if( tmp_regexr is not None ):
+            #         tmp_localVar = tmp_regexr.group()[5:-1].strip(); # Get the variable in question
+            #         if( tmp_localVar.lower() not in fun_localVars ):
+            #             fun_localVars[tmp_localVar.lower()] = tmp_localVar; # Record the variable and the first way it was used (to retain capitalization but make it consistent)
+            #         # END IF
+            #     # END IF
+            # # END FOR jk
+            
             # --- Standardize the bevItUp to a list ---
             if( not isinstance(bevItUp, list) ): # After this bevItUp is always a list, makes it easier to target
                 bevItUp = [bevItUp]; # Love it or list it
@@ -1553,7 +2162,7 @@ def trans( idl, libDir = None ):
                 FLG_realsies = False; # Taken care of later, but no need to ponder it
             # END IF
             
-            if( FLG_realsies ):               
+            if( FLG_realsies ):             
                 
                 # Look for illegal names that are python functions (sum, ^, 0b, 1b, ||, &&)
                 regexr = regex_avoid(r'[\s*\(+-/*=,]sum[ +-/*,=\)]', bevItUp, skipums); # Regex it
@@ -1854,479 +2463,735 @@ def trans( idl, libDir = None ):
                     
                     regexr = regex_avoid(r'!radeg', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
-                   
-                # if( 'lonpole NE 1.8d2' in bevItUp ):
-                #     breakpoint()
-                #     pass
-                
-                # Case Catcher
-                if( FLG_case == False ):
-                    # Case statement - get into it (only need to get into it if case is off)
-                    regexr = regex_avoid(r'^\s*case +.+ +of', bevItUp.lower(), skipums); # Regex it
-                    if( regexr is not None ):
-                        # Case becomes if statement
-                        regexr_case = regex_avoid(r'case +.+ +of', bevItUp.lower(), skipums); # Regex it
-                        repl = bevItUp[regexr_case.start()+4:regexr_case.end()-2].strip(' ');
-                        
-                        if( repl == '1' ):
-                            FLG_case_accursedIf = 1; # It's accursed if time!
-                        else:
-                            FLG_case_var = repl; # Record this
-                            # bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '' ); # Wipe out the case statement, it's worthless
-                            # print('Case statement with actual case action, ponder how to implement.')
-                            # breakpoint() # Ponder this
-                        # END IF
-                        bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '' ); # Wipe out the case statement, it's worthless
-                        FLG_case = 1; # Fire these up
-                        FLG_lastOpen.append('case');
-                    # END IF
-                else:
-                    # Extra scrutiny if case is on
-                    # endcase statement - get into it
-                    regexr = regex_avoid(r'^\s*endcase', bevItUp.lower(), skipums); # Regex it
-                    if( regexr is not None ):
-                        bevItUp = '# END IF'+bevItUp[regexr.end():]; # Simple!
-                        spacer -= 4; # Move everything back NOW
-                        FLG_case = False; # End these
-                        FLG_lastOpen.pop(len(FLG_lastOpen) - FLG_lastOpen[::-1].index('case') - 1); # Remove from here as well
-                        FLG_case_accursedIf = False;
-                        # FLG_case_thenWithNoBegin = False;
-                        # if( FLG_caseClosed == False ):
-                        #     # Closes the open if statement if it wasn't closed by an else call
-                        #     FLG_IF_open -= 1; # Nice
-                        #     FLG_lastOpen.pop(len(FLG_lastOpen) - FLG_lastOpen[::-1].index('if') - 1); # Remove from here as well
-                        # else:
-                        #     FLG_caseClosed = False; # Turn it off
-                        # # END IF
-                        FLG_caseIf = False; # No case if
+                regexr = regex_avoid(r"'[A-Za-z0-9]+'x[bsul]?[usl]?l?", bevItUp, skipums, FLG_enableStrangExclusion=False); # Regex it, disable string exclusion b/c this involves a string
+                while( regexr is not None ):
+                    bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '0x'+bevItUp[regexr.start()+1:regexr.end()-(len(bevItUp[regexr.start()+2+bevItUp[regexr.start()+1:regexr.end()].find("'"):regexr.end()])+1)] ); # Replace the bit!
+                    
+                    regexr = regex_avoid(r"'[A-Za-z0-9]'x[bsul]?[usl]?l?", bevItUp, skipums, FLG_enableStrangExclusion=False); # Regex it, disable string exclusion b/c this involves a string
+                # END WHILE
+                regexr = regex_avoid(r'[a-zA-Z0-9]\s*\(.*\*.*\)', bevItUp, skipums); # Regex it [this is not perfect capture of variables]
+                regexr2 = regex_avoid(r'[a-zA-Z0-9)]\s*\*\s*[(a-zA-Z0-9]', bevItUp, skipums); # Regex it [fix multiplication inside]
+                while( (regexr is not None) and (regexr2 is None) ): # This is a variable
+                    indxr = bevItUp[regexr.start():regexr.end()].find('*'); # Get where the asterisk is at
+                    if( regex_avoid_logic(r'[a-zA-Z0-9]\s*\(\s*\*\s*\)', bevItUp[regexr.start():regexr.end()], skipums) ):
+                        bevItUp = strreplace( bevItUp, regexr.start() + indxr, regexr.start() + indxr + 1, ':' ); # Replace the bit!
                     else:
-                        # This is for every line during a case statement zone
-                        if( FLG_case_accursedIf > 0 ):
-                            regexr_caseElse = regex_avoid( r'^\s*else *:', bevItUp, skipums); # Catch a case
-                            regexr_case = regex_avoid( r'^\s*[\w ,+\-*/^<>[\]()&|]+ *:', bevItUp, skipums); # Catch a case
-                            if( regexr_caseElse is not None ):
-                                # Special ending case!
-                                if( regexr_caseElse.end() == len(bevItUp) ):
-                                    # Special-special case of empty case! woowwwwwwww
-                                    bevItUp = 'else then pass'; # Woo
-                                else:
-                                    if( regexr_caseElse.end()+1 < len(bevItUp) ):
-                                        endy = ' '+bevItUp[regexr_caseElse.end()+1:]; # Tack on the test if it exists
-                                    else:
-                                        endy = ''; # Nothin
-                                    # END IF
-                                    bevItUp = 'else then'+endy; # Slam it
-                                # END IF
-                                FLG_caseIf = True; # It's a case if
-                            elif ( regexr_case is not None ):
-                                if( regexr_case.end()+1 < len(bevItUp) ):
-                                    endy = ' '+bevItUp[regexr_case.end():]; # Tack on the test if it exists
-                                else:
-                                    endy = ''; # Nothin
-                                # END IF
-                                if( FLG_case_accursedIf == 1 ):
-                                    bevItUp = 'if ( '+bevItUp[regexr_case.start():regexr_case.end()-1]+' ) then'+endy; # Make it an if statement
-                                else:
-                                    bevItUp = 'endif else if ( '+bevItUp[regexr_case.start():regexr_case.end()-1]+' ) then'+endy; # Make it an if statement
-                                # END IF
-                                if( not regex_avoid_logic(r'^\s*begin', endy.lower(), skipums)  ):
-                                    # FLG_case_thenWithNoBegin = True;
-                                    if( bevItUp.strip(' ')[-4:] == 'then' ):
-                                        # Special case of empty case! woowwwwwwww
-                                        bevItUp += ' pass'; # Woo
-                                    # END IF
-                                # END IF
-                                FLG_case_accursedIf += 1; # Increment, so know moved off of if
-                                FLG_caseIf = True; # It's a case if
-                            else:
-                                FLG_caseIf = False; # No case if
-                            # END IF
-                        else:
-                            regexr_caseElse = regex_avoid( r'^\s*else *:', bevItUp.lower(), skipums); # Catch a case
-                            regexr_case = regex_avoid( r"^\s*[\w ,+\-*/^<>'[\]()&|]+ *:", bevItUp, skipums); # Catch a case
-                            if( regexr_caseElse is not None ):
-                                # Special ending case!
-                                if( regexr_caseElse.end() == len(bevItUp) ):
-                                    # Special-special case of empty case! woowwwwwwww
-                                    bevItUp = 'else then pass'; # Woo
-                                else:
-                                    if( regexr_caseElse.end()+1 < len(bevItUp) ):
-                                        endy = ' '+bevItUp[regexr_caseElse.end()+1:]; # Tack on the test if it exists
-                                    else:
-                                        endy = ''; # Nothin
-                                    # END IF
-                                    bevItUp = 'else then'+endy; # Slam it
-                                # END IF
-                                FLG_caseIf = True; # It's a case if
-                            elif ( regexr_case is not None ):
-                                if( regexr_case.end()+1 < len(bevItUp) ):
-                                    endy = ' '+bevItUp[regexr_case.end():]; # Tack on the test if it exists
-                                else:
-                                    endy = ''; # Nothin
-                                # END IF
-                                if( FLG_case == 1 ):
-                                    bevItUp = 'if ( '+FLG_case_var+' == '+bevItUp[regexr_case.start():regexr_case.end()-1].strip(' ')+' ) then'+endy; # Make it an if statement
-                                else:
-                                    bevItUp = 'endif else if ( '+FLG_case_var+' == '+bevItUp[regexr_case.start():regexr_case.end()-1].strip(' ')+' ) then'+endy; # Make it an if statement
-                                # END IF
-                                if( not regex_avoid_logic(r'^\s*begin', endy.lower(), skipums) ):
-                                    # FLG_case_thenWithNoBegin = True;
-                                    if( bevItUp.strip(' ')[-4:] == 'then' ):
-                                        # Special case of empty case! woowwwwwwww
-                                        bevItUp += ' pass'; # Woo
-                                    # END IF
-                                # END IF
-                                FLG_case += 1; # Increment, so know if moved off of if
-                                FLG_caseIf = True; # It's a case if
-                            else:
-                                FLG_caseIf = False; # No case if
-                            # END IF
-                        # END IF
-                    # END IF
-                # END IF
-                                
-                # patch for "END" being able to END IF STATEMENTS not just ENDIF, consistency?? NONE; one thousand curses upon the language designers
-                regexrL = regex_avoid_logic(r'^\s*(?:end[ ;]|end$)', bevItUp.lower(), skipums) and strisin( bevItUp.lstrip('\t').lstrip(' ').lower(), 'end', straddlers ); # Regex it
-                if( regexrL and ((FLG_IF_open > 0) or (FLG_ELSE_open > 0) or (FLG_case > 0) or (FLG_FOR_open > 0)) ):
-                    regexr = regex_avoid(r'(\s*end\s*)', bevItUp.lower(), skipums); # Regex it
-                    if( len(FLG_lastOpen) == 0 ):
-                        if( FLG_IF_open > 0 ):
-                            bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endif' ); # Replace the bit!
-                        elif ( FLG_ELSE_open > 0 ):
-                            bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endelse' ); # Replace the bit!
-                        elif ( FLG_case > 0 ):
-                            bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '' ); # Wipe it out, unnecessary
-                        elif ( FLG_FOR_open > 0 ):
-                            bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endfor' ); # Replace the bit!
-                        # END IF
-                    else:
-                        if( (FLG_lastOpen[-1] == 'if') and (FLG_IF_open > 0) ):
-                            if( (FLG_case > 0) and (FLG_caseIf == False) ):
-                                bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '' ); # Replace the bit!
-                            else:
-                                bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endif' ); # Replace the bit!
-                            # END IF
-                        elif( (FLG_lastOpen[-1] == 'else') and (FLG_ELSE_open > 0) ):
-                            bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endelse' ); # Replace the bit!
-                        elif( (FLG_lastOpen[-1] == 'case') and (FLG_case > 0) ):
-                            bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '' ); # Replace the bit!
-                        elif( (FLG_lastOpen[-1] == 'for') and (FLG_FOR_open > 0) ):
-                            bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endfor' ); # Replace the bit!
-                        else:
-                            print('Unequal if/else/for counter!')
-                            breakpoint()
-                            if( FLG_IF_open > 0 ):
-                                bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endif' ); # Replace the bit!
-                            elif ( FLG_ELSE_open > 0 ):
-                                bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endelse' ); # Replace the bit!
-                            elif ( FLG_case > 0 ):
-                                bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '' ); # Wipe it out, unnecessary
-                            elif ( FLG_FOR_open > 0 ):
-                                bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endfor' ); # Replace the bit!
-                            # END IF
-                        # END IF
-                        # FLG_lastOpen.pop(-1); # Ditch it
-                    # END IF
-                # END IF
-                                
-                # If statement - get into it
-                # First deal with endif else if
-                regexr = regex_avoid(r'^\s*endif *else[ \$\n]*if', bevItUp.lower(), skipums); # Regex it
-                if( regexr is not None ):
-                    # breakpoint()
-                    FLG_elif = True; # Trigger
-                    if( FLG_elifSplitLine == True ):
-                        FLG_lastOpen.append('if'); # Undo some stuff
-                        codez.pop(-1); # Remove the last line which is an # END IF, added b/c couldn't know ya know
-                        FLG_elifSplitLine = False; # All good
-                    else:
-                        spacer -= 4; # Move everything back NOW
-                    # END IF
-                    regexr = regex_avoid(r'^\s*endif *else[ \$\n]*', bevItUp.lower(), skipums); # Regex it
-                    bevItUp = strreplace(bevItUp, regexr.start(), regexr.end(), ''); # Nix else so it's an if statement and the if statement can handle it
-                else:
-                    FLG_elif = False; # Reset
-                    # if( FLG_elif == True ):
-                    #     regexr_start = regex_avoid(r'^\s*endif *else', bevItUp.lower(), skipums); # Regex it
-                    #     if( regexr_start is not None ):
-                    #         breakpoint()
-                    # else:
-                    #     FLG_elif = False; # Reset
-                    # # END IF
-                # END IF
-                # Then deal with else if mid-line
-                if( FLG_IF_open > 0 ):
-                    regexr = regex_avoid(r'else *if +', bevItUp.lower(), skipums); # Regex it
-                    if( regexr is not None ):
-                        regexr_start = regex_avoid(r'^\s*else *if', bevItUp.lower(), skipums); # Regex it
-                        if( regexr_start is not None ):
-                            FLG_elif = True; # Trigger
-                            spacer -= 4; # Move everything back NOW
-                            regexr = regex_avoid(r'^\s*else', bevItUp.lower(), skipums); # Regex it
-                            bevItUp = strreplace(bevItUp, regexr.start(), regexr.end(), ''); # Nix else so it's an if statement and the if statement can handle it
-                        else:
-                            # Eject it so it can be dealt with later
-                            FLG_elifSplitLine = True; # Yep it gets so weird
-                            idl.insert(i+1, 'endif '+bevItUp[regexr.start():]); # Byeee
-                            fend += 1; # More fend to cover
-                            bevItUp = strreplace(bevItUp, regexr.start(), len(bevItUp), '').rstrip(' ').rstrip('$\n'); # Make it so it's a regular call
-                        # END IF
-                    # END IF
-                # END IF
-                # CHeck if "IF" starts the line - gotta
-                regexr = regex_avoid(r'^\s*if', bevItUp.lower(), skipums); # Regex it
-                if( regexr is not None ):
-                    bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), ' if' ); # Enforce lower-case if
-                    regexr = regex_avoid(r'^\s*if\s*', bevItUp.lower(), skipums); # Regex it
-                    regexr_ifMore = regex_avoid(r' +if +', bevItUp[regexr.end():].lower(), skipums); # Regex it
-                    # Determine what kind of if we're working with
-                    if( regexr_ifMore is None ):
-                        regexr_thenBegin = regex_avoid(r'\s*then +begin\s*', bevItUp.lower(), skipums)
-                        regexr_then = regex_avoid(r'\s+then\s+', bevItUp.lower(), skipums); # Ask for it for real
-                        regexr_else = regex_avoid(r'\s+else\s+', bevItUp.lower(), skipums); # Ask for it for real
-                        regexr_elseBegin = regex_avoid(r'\s+else +begin\s*', bevItUp.lower(), skipums); # Ask for it for real
-                    else:
-                        # If there are more ifs in this line, which can happen, limit the lookahead
-                        regexr_thenBegin = regex_avoid(r'\s*then +begin\s*', bevItUp[:regexr.end()+regexr_ifMore.start()].lower(), skipums);
-                        regexr_then = regex_avoid(r'\s+then(?:\s+|$)', bevItUp[:regexr.end()+regexr_ifMore.start()].lower(), skipums); # Ask for it for real
-                        regexr_else = regex_avoid(r' +else(?:\s+|$)', bevItUp[:regexr.end()+regexr_ifMore.start()].lower(), skipums); # Ask for it for real
-                        regexr_elseBegin = regex_avoid(r' +else +begin\s*', bevItUp[:regexr.end()+regexr_ifMore.start()].lower(), skipums); # Ask for it for real
-                    # END IF
-                    if( regexr_thenBegin is not None ):
-                        # ez pz works right
-                        if( regexr_thenBegin.end() == len(bevItUp) ):
-                            bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ':' ); # Actual end, so no space
-                        else:
-                            bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ': ' ); # Comment or something after, so space
-                        # END IF
-                        FLG_spacer = 1; # Move it up for next time
-                    elif( (regexr_then is not None) and (regexr_else is None) and (regexr_elseBegin is None) ):
-                        regexr_holladolla = regex_avoid(r'^\s*\$(\s|\n)*\s*', bevItUp[regexr_then.end():].lower(), skipums);
-                        regexr_holladollaCommy = regex_avoid(r'\$ *;.*\n', bevItUp[regexr_then.end():].lower(), skipums);
-                        newLineCntr = 1; # Prep it
-                        if( regexr_holladolla is not None ):
-                            idl.insert(i+newLineCntr,bevItUp[regexr_then.end()+regexr_holladolla.end():]); # Split at "then", put it into IDL for later (basically making it a real if statement)
-                        elif( regexr_holladollaCommy is not None ):
-                            idl.insert(i+newLineCntr,bevItUp[regexr_then.end():(regexr_holladollaCommy.start()+regexr_then.end())]+'$\n'); # Split at "then", put it into IDL for later (basically making it a real if statement)
-                            newLineCntr += 1; # Increment
-                            idl.insert(i+newLineCntr,bevItUp[(regexr_holladollaCommy.end()+regexr_then.end()):]+\
-                                       bevItUp[(regexr_holladollaCommy.start()+regexr_then.end()+1):(regexr_holladollaCommy.end()+regexr_then.end()-1)]); # Split at "then", put it into IDL for later (basically making it a real if statement)
-                        else:
-                            idl.insert(i+newLineCntr,bevItUp[regexr_then.end():]); # Split at "then", put it into IDL for later (basically making it a real if statement)
-                        # END IF
-                        bevItUp = bevItUp[:regexr_then.start()]+':'; # Remove the split bit, add a :
-                        if( FLG_caseIf == False ): # Don't add an endif if it's a case statement thing
-                            newLineCntr += 1; # Increment
-                            idl.insert(i+newLineCntr,'endif'); # Tack one more to finish it off as a real big if statement - this is to deal with spaces better
-                        # END IF
-                        fend += newLineCntr; # More fend to cover
-                        FLG_spacer = 1; # Move it up for next time
-                    elif( (regexr_then is not None) and (regexr_elseBegin is not None) ):
-                        idl.insert(i+1,bevItUp[regexr_then.end():regexr_else.start()].strip('$\n')); # Split at "then", put it into IDL for later (basically making it a real if statement)
-                        idl.insert(i+2,'else@'); # Tack on the else: manually
-                        fend += 2; # More fend to cover
-                        FLG_spacer = 1; # Move it up for next time
-                        bevItUp = bevItUp[:regexr_then.start()]+':'; # Remove the split bit, add a :
-                    elif( (regexr_then is not None) and (regexr_else is not None) ):
-                        line2drop = bevItUp[regexr_then.end():regexr_else.start()].strip('$\n');
-                        regexr_lostComment = regex_avoid(r'^\s*;', line2drop, skipums);
-                        lostComment = ''; # Holding nothing usually
-                        if( regexr_lostComment is not None ):
-                            regexr_newLine = regex_avoid(r'^\s*;.*\n', line2drop, skipums);
-                            lostComment = line2drop[:regexr_newLine.end()].strip('$\n'); # Catch that lost comment
-                            line2drop = line2drop[regexr_newLine.end():]; # Trim off the comment
-                        # END IF
-                        idl.insert(i+1,line2drop.strip('$\n')); # Split at "then", put it into IDL for later (basically making it a real if statement)
-                        idl.insert(i+2,'else@'); # Tack on the else: manually
-                        idl.insert(i+3,bevItUp[regexr_else.end():].strip('$\n')); # Split at "then", put it into IDL for later (basically making it a real if statement)
-                        idl.insert(i+4,'endelse'); # Tack one more to finish it off as a real big if statement - this is to deal with spaces better
-                        fend += 4; # More fend to cover
-                        FLG_spacer = 1; # Move it up for next time
-                        bevItUp = bevItUp[:regexr_then.start()]+':'+lostComment; # Remove the split bit, add a :
-                        if( FLG_elif == True ):
-                            #!!!
-                            FLG_IF_open -= 1; # Nice
-                        # END IF
-                    else:
-                        print('Not supposed to if like this??');
-                        breakpoint()
-                        pass
-                    # END IF
-                    if( FLG_elif == True ):
-                        bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'elif ' ); # Make it an elif
-                    else:
-                        if( FLG_caseIf == False ):
-                            FLG_IF_open += 1; # Great
-                            FLG_lastOpen.append('if');
-                            if( (regexr_then is not None) and (regexr_else is not None) ):
-                                FLG_IF_open -= 1; # Nice
-                                FLG_lastOpen.pop(len(FLG_lastOpen) - FLG_lastOpen[::-1].index('if') - 1); # Remove from here as well
-                            # END IF
-                        # END IF
+                        bevItUp = strreplace( bevItUp, regexr.start() + indxr, regexr.start() + indxr + 1, '' ); # Replace the bit!
                     # END IF
                     
-                    # Catch ~ which needs to become "not"
-                    regexr = regex_avoid(r'(\s+~[a-zA-Z])', bevItUp, skipums); # Regex it
-                    if( regexr is not None ):
-                        bevItUp = strreplace( bevItUp, regexr.start(), regexr.end()-1, ' not ' ); # Replace the bit!
-                    # END IF
-                # END IF
-
-                # CHeck if "endif" starts the line - gotta
-                regexrL = regex_avoid_logic(r'(^\s*endif *)', bevItUp.lower(), skipums); # Regex it #.lstrip('\t').lstrip(' ')
+                    regexr = regex_avoid(r'[a-zA-Z0-9]\s*\(.*\*.*\)', bevItUp, skipums); # Regex it
+                # END WHILE
+            
+                # & statement split
+                regexrL = regex_avoid_logic(r'&', bevItUp, skipums); # Regex it
                 if( regexrL == True ):
-                    # Determine what kind of if we're working with
-                    regexr_elseBegin = regex_avoid(r'else +begin', bevItUp.lower(), skipums)
-                    regexr_else = regex_avoid(r' +else', bevItUp.lower(), skipums); # Ask for it for real
-                    if( regexr_elseBegin is not None ):
-                        bevItUp = 'else@'+bevItUp[regexr_elseBegin.end():]; # Simple!
-                        FLG_spacer = 1; # Move it up for next time
-                    elif( regexr_else is not None ):
-                        # It's a long one
-                        idl.insert(i+1,bevItUp[regexr_else.end():]); # Tack on next line manually
-                        idl.insert(i+2,'endelse'); # End the else
-                        fend += 2; # More fend to cover
-                        bevItUp = 'else@'; # Only keep this for now, it'll trigger the next check
-                    else:
-                        spacer -= 4; # Move everything back NOW
-                        regexr = regex_avoid(r'(\s*endif\s*)', bevItUp.lower(), skipums); # Regex it
-                        bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '; END IF' )
-                    # END IF
-                    FLG_IF_open -= 1; # Nice
-                    FLG_lastOpen.pop(len(FLG_lastOpen) - FLG_lastOpen[::-1].index('if') - 1); # Remove from here as well
+                    # Got a line split, could be many
+                    while(  regex_avoid_logic(r'&', bevItUp, skipums, FLG_rev=True) ):
+                        regexr = regex_avoid(r'&', bevItUp, skipums, FLG_rev=True); # Get where that last & at
+                        idl.insert(i+1,bevItUp[regexr.end():]); # Split at "then", put it into IDL for later (basically making it a real if statement)
+                        fend += 1; # More fend to cover
+                        bevItUp = bevItUp[:regexr.start()]; # Remove the split bit, add a :
+                    # END WHILE
                 # END IF
-                
-                # Else statement - get into it
-                # CHeck if "ELSE" starts the line - gotta
-                regexrL = regex_avoid_logic(r'\s*else', bevItUp.lower(), skipums) and not regex_avoid_logic(r'endelse', bevItUp.lower(), skipums); # Regex it
-                if( regexrL == True ): # If else is only ever used on a continued line, this can be simplified - not caring to find out now
-                    # Determine what kind of else we're working with
-                    regexr_elseAt = regex_avoid_logic(r'else@', bevItUp.lower(), skipums); # Already converted to Python style
-                    if( regexr_elseAt  == True ):
-                        spacer -= 4; # Move everything back NOW
-                        FLG_spacer = 1; # Move it up for next time
-                        FLG_ELSE_open += 1; # Great
-                        FLG_lastOpen.append('else');
+            
+                # Case Catcher V2
+                regexr = regex_avoid(r'^\s*case\s+.+?\s+of', bevItUp.lower(), skipums); # Regex it
+                if( regexr is not None ):
+                    # Prep building the case info so it can be cleanly converted to an if statement
+                    case_aligner = {'if base': bevItUp[bevItUp.find('case')+4:regexr.end()-2].strip(' '), 'ifs':{}}; # Prep a dict to align the ifs
+                    if( regex_avoid_logic(r'^\s*case\s+.+?\s+of\s*$', bevItUp.lower(), None) == False ):
+                        case_aligner['commentary'] = bevItUp[regexr.end():]; # Record the commentary
                     else:
-                        regexr_else = regex_avoid(r'(^\s*else\s*)', bevItUp.lower(), skipums);
-                        regexr_elseColon = regex_avoid(r'else *:', bevItUp.lower(), skipums); # Switch statement, ignore it
-                        regexr_elseNewLine = regex_avoid(r'\$(.|\n)*else\s*', bevItUp.lower(), skipums);
-                        if( regexr_elseColon is None ): # Don't do this on a switch statement else:
-                            if( regexr_else is not None ):
-                                spacer -= 4; # Move everything back NOW
-                                regexr_thenBegin = regex_avoid(r'(\s+then begin\s*)', bevItUp.lower(), skipums)
-                                regexr_then = regex_avoid(r'(\s+then\s+)', bevItUp.lower(), skipums); # Ask for it for real
-                                if( regexr_thenBegin is not None ):
-                                    # ez pz works right
-                                    if( regexr_thenBegin.end() == len(bevItUp) ):
-                                        bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ':' ); # Actual end, so no space
-                                    else:
-                                        bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ': ' ); # Comment or something after, so space
-                                    # END IF
-                                    FLG_spacer = 1; # Move it up for next time      
-                                    if( FLG_caseIf == False ):
-                                        FLG_ELSE_open += 1; # Great
-                                        FLG_lastOpen.append('else');
-                                    # END IF
-                                elif( regexr_then is not None ):
-                                    idl.insert(i+1,bevItUp[regexr_then.end():]); # Split at "then", put it into IDL for later (basically making it a real if statement)
-                                    bevItUp = bevItUp[:regexr_then.start()]+':'; # Remove the split bit, add a :
-                                    if( FLG_caseIf == False ):
-                                        idl.insert(i+2,'endelse'); # Tack one more to finish it off as a real big if statement - this is to deal with spaces better
-                                        fend += 2; # More fend to cover
-                                        FLG_ELSE_open += 1; # Great
-                                        FLG_lastOpen.append('else');
-                                    else:
-                                        fend += 1; # More fend to cover
-                                    # END IF
-                                    FLG_spacer = 1; # Move it up for next time
+                        case_aligner['commentary'] = None; # No comment
+                    # END IF
+                    # if( 'case StructDef(i) of' in bevItUp ):
+                    #     breakpoint()
+                    
+                    # Loop until the case is done, we're locked in anyway and it doesn't have a clean conversion otherwise without cursed maneuvers (V1)
+                    lines2insert = ['# Converted IDL case to ifs for Python']; # Prep an inserter line
+                    i_s = i; # Record the start
+                    FLG_beginZone = False; # Prep the begin zone flag to false to start
+                    regexr_end = regex_avoid(r'^\s*endcase', bevItUp.lower(), skipums); # Regex it
+                    caseNow = 0; # Record the ifs uniquely
+                    while( regexr_end is None ):
+                        i += 1; # Move it up here and now
+                        bevItDown = idl[i]; # Get out the current line
+                        regexr_nothingness = re.match(r'^\s*$', bevItDown); # Regex it
+                        regexr_commentess = re.match(r'^\s*;', bevItDown); # Regex it
+                        
+                        if( regexr_commentess is not None ):
+                            lines2insert.append(bevItDown); # Tack on the comment for later
+                        elif( regexr_nothingness is None ):
+                            # --- Bit for handling new lines ---
+                            FLG_lineCont = False; # Prep the flag
+                            while( end_finder(idl[i], '$', skipums) or FLG_lineCont ): # Empty lines are just wrapped into this or (idl[i] == '')
+                                i += 1; # Increment
+                                if( re.search(r'^\s*$', idl[i]) is None ):
+                                    if( regex_avoid_logic(r'\$', idl[i], skipums) and (not regex_avoid_logic(r'\$ *$', idl[i], skipums)) and (not regex_avoid_logic(r';', idl[i], None)) ):
+                                        # Requires patching, apparently in IDL you can end a line continuation with a comment without needing the comment ;, coding to support that would be annoying - so I don't!
+                                        # regexr = regex_avoid(r'\$', mirrorU(idl[i]), None); # Get where $ at
+                                        # dollaLoc = len(idl[i]) - regexr.end(); # Un-mirror-universe it
+                                        regexr = regex_avoid(r'\$', idl[i], skipums, FLG_rev=True); # Get where $ at
+                                        idl[i] = strinsert(idl[i], regexr.start()+1, ' ;'); # Insert a comment
+                                    # END IF            
+                                    bevItDown += '\n '+idl[i]; # Tack on more!
+                                    FLG_lineCont = False; # Set the flag
                                 else:
-                                    breakpoint()
-                                    pass
+                                    FLG_lineCont = True; # Set the flag for an empty line, skip by it
                                 # END IF
-                            elif( regexr_elseNewLine is not None ):
-                                idl.insert(i+1,'else@'); # Tack on the else: manually
-                                idl.insert(i+2,bevItUp[regexr_elseNewLine.end():]); # Get bit after the else
-                                fend += 2; # More fend to cover
-                                bevItUp = bevItUp[:regexr_elseNewLine.start()]; # reduce bevitup to just the first line
-                                FLG_spacer = -1; # Move it back for next time (the else:)
-                            else:
-                                print('Not supposed to if like this??');
-                                breakpoint()
+                            # END WHILE
+                            regexr = regex_avoid(r'\$+? *?;+?.*?\n+?', bevItDown, None); # Find comments on line continuations, which are illegal in Python (full lazy mode)
+                            while( regexr is not None ):
+                                lostComment = bevItDown[regexr.start()+1:regexr.end()-1]; # Catch that lost comment
+                                bevItDown = strreplace(bevItDown, regexr.start(), regexr.end(), '$\n'); # Laser eyes the lost comment
+                                bevItDown += lostComment; # Slap it at the end, which is cool
+                                
+                                regexr = regex_avoid(r'\$+? *?;+?.*?\n+?', bevItDown, None); # Find comments on line continuations, which are illegal in Python (full lazy mode)
                             # END IF
                             
-                            regexr_thenBegin = regex_avoid(r'(\s+then begin\s*)', bevItUp.lower(), skipums)
-                            regexr_then = regex_avoid(r'(\s+then\s+)', bevItUp.lower(), skipums); # Ask for it for real
-                            if( regexr_thenBegin is not None ):
-                                # ez pz works right
-                                if( regexr_thenBegin.end() == len(bevItUp) ):
-                                    bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ':' ); # Actual end, so no space
+                            # --- Handle Cases ---
+                            regexr_end = regex_avoid(r'^\s*endcase', bevItDown.lower(), skipums); # Regex it
+                            if( regexr_end is None ):
+                                if( FLG_beginZone == False ):
+                                    regexr = regex_avoid(r'^.+?:', bevItDown.lower(), skipums); # Regex it
+                                    
+                                    if( regexr is None):
+                                        breakpoint(); # Shouldn't occur, but could cause IDL
+                                    else:
+                                        caseNow += 1; # Increment to a unique caseNow
+                                        case_aligner['ifs'][caseNow] = {'if': bevItDown[:regexr.end()-1].strip(' ')}; # Prep a dict
+                                        regexr_begin = regex_avoid(r'^\s*(?:\$\n)?\s*begin(?:\s*$|\s*;)', bevItDown[regexr.end():].lower(), None); # Regex it
+                                        if( regexr_begin is None ):
+                                            case_aligner['ifs'][caseNow]['then'] = [bevItDown[regexr.end():]]; # Record the then as a list for interoperability workign with begin/end bits in cases
+                                        else:
+                                            FLG_beginZone = True; # The begin began
+                                            case_aligner['ifs'][caseNow]['then'] = []; # Ability to tack on as needed
+                                        # END IF
+                                    # END IF
                                 else:
-                                    bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ': ' ); # Comment or something after, so space
+                                    regexr = regex_avoid(r'^\s*end(?!for|if|else|case)', bevItDown.lower(), skipums); # Regex it
+                                    if( regexr is None ):
+                                        case_aligner['ifs'][caseNow]['then'].append(bevItDown); # Tack on 
+                                    else:
+                                        FLG_beginZone = False; # The begin is over
+                                    # END IF
                                 # END IF
-                                FLG_spacer = 1; # Move it up for next time       
-                                FLG_ELSE_open += 1; # Great
-                                FLG_lastOpen.append('else');
-                            elif( regexr_then is not None ):
-                                idl.insert(i+1,bevItUp[regexr_then.end():]); # Split at "then", put it into IDL for later (basically making it a real if statement)
-                                bevItUp = bevItUp[:regexr_then.start()]+':'; # Remove the split bit, add a :
-                                idl.insert(i+2,'endelse'); # Tack one more to finish it off as a real big if statement - this is to deal with spaces better
-                                fend += 2; # More fend to cover
-                                FLG_spacer = 1; # Move it up for next time
-                                FLG_ELSE_open += 1; # Great
-                                FLG_lastOpen.append('else');
-                            # END IF
-                            
-                            # Catch ~ which needs to become "not"
-                            regexr = regex_avoid(r'(\s+~\s*[a-zA-Z])', bevItUp, skipums); # Regex it
-                            if( regexr is not None ):
-                                bevItUp = strreplace( bevItUp, regexr.start(), regexr.end()-1, ' not ' ); # Replace the bit!
                             # END IF
                         # END IF
+                    # END WHILE
+                    i_e = i; # Record the end
+                    i = i_s; # Reset
+                    
+                    lines2insert_starto = len(lines2insert); # Prep the initial value of lines2insert
+                    for keyz in case_aligner['ifs'].keys():
+                        if( len(lines2insert) == lines2insert_starto ): # Starting out, if
+                            lines2insert.append('if ( ('+case_aligner['if base']+') == '+case_aligner['ifs'][keyz]['if']+') then begin'); # Record it as IDL
+                            if( (len(case_aligner['ifs'][keyz]['then']) == 1) and regex_avoid_logic(r'^\s*;', case_aligner['ifs'][keyz]['then'][0], None) ):
+                                lines2insert.append('p@ss '+case_aligner['ifs'][keyz]['then'][0]); # ONLY a comment, Python needs more than this
+                            else:
+                                for jk in range(0, len(case_aligner['ifs'][keyz]['then'])):
+                                    lines2insert.append(case_aligner['ifs'][keyz]['then'][jk]); # Smash em in as-is
+                                # END FOR jk
+                            # END IF
+                        elif( case_aligner['ifs'][keyz]['if'].lower() == 'else' ):
+                            lines2insert.append('endif else begin'); # Record it as IDL
+                            if( (len(case_aligner['ifs'][keyz]['then']) == 1) and regex_avoid_logic(r'^\s*;', case_aligner['ifs'][keyz]['then'][0], None) ):
+                                lines2insert.append('p@ss '+case_aligner['ifs'][keyz]['then'][0]); # ONLY a comment, Python needs more than this
+                            else:
+                                for jk in range(0, len(case_aligner['ifs'][keyz]['then'])):
+                                    lines2insert.append(case_aligner['ifs'][keyz]['then'][jk]); # Smash em in as-is
+                                # END FOR jk
+                            # END IF
+                        else:
+                            lines2insert.append('endif else el@if ( ('+case_aligner['if base']+') == '+case_aligner['ifs'][keyz]['if']+') then begin'); # Record it as IDL
+                            if( (len(case_aligner['ifs'][keyz]['then']) == 1) and regex_avoid_logic(r'^\s*;', case_aligner['ifs'][keyz]['then'][0], None) ):
+                                lines2insert.append('p@ss '+case_aligner['ifs'][keyz]['then'][0]); # ONLY a comment, Python needs more than this
+                            else:
+                                for jk in range(0, len(case_aligner['ifs'][keyz]['then'])):
+                                    lines2insert.append(case_aligner['ifs'][keyz]['then'][jk]); # Smash em in as-is
+                                # END FOR jk
+                            # END IF
+                        # END IF
+                    # END FOR keyz
+                    if( case_aligner['ifs'][keyz]['if'].lower() == 'else' ):
+                        lines2insert.append('endelse'); # It was an else to end
+                    else:
+                        lines2insert.append('endif'); # Sign off the ifs
+                    # END IF
+                    
+                    # Replace the IDL lines with these
+                    fend += len(lines2insert) - (i_e-i_s+1); # Adjust the fender
+                    idl = idl[:i_s] + lines2insert + idl[i_e+1:]; # Switcheroo the case with the newly minted ifs, let the if handler eat it up
+                    
+                    # Sign off the bevItUp now, nothing of substance
+                    if( case_aligner['commentary'] is not None ):
+                        bevItUp = case_aligner['commentary']; # Record the commentary
+                    else:
+                        bevItUp = '; this if statement set was an IDL case statement'
+                    # END IF
+                # END IF
+                                
+                # if( FLG_logicMech['if'] < 0 ):
+                #     breakpoint()
+                # if( FLG_logicMech['else'] < 0 ):
+                #     breakpoint()
+                
+                # If/else statements V2 - get into it. Due to IDL mysteries, we need no specific else parsing                
+                # First deal with endif -> 1st because endifs make elifs whcih are just ifs again
+                if( FLG_logicMech['if'] <= 0 ):
+                    regexr_endif = regex_avoid(r'^\s*endif(?:\s+|$)', bevItUp.lower(), skipums); # Detect endif line
+                else:
+                    # You can of course end an if in IDL with just an 'end' and not an 'endif', but only look for it if there are IFs open (so we don't catch end for the end of the function like it should be)
+                    regexr_endif = regex_avoid(r'^\s*end(?:if)?(?:\s+|$)', bevItUp.lower(), skipums); # Detect endif line
+                # END IF                
+                if( regexr_endif is not None ):
+                    # breakpoint()
+                    # regexr_endifElse = regex_avoid(r'^\s+end(?:if)?(?:\s+else\s+|\s+\$\s*\n\s*else\s+)', bevItUp.lower(), skipums); # Detect endif line
+                    regexr_endifElse = regex_avoid(r'^\s*end(?:if)?(?:\s+\$\s*\n\s*|\s+)else(?:\s+\$\s*\n\s*|\s+)', bevItUp.lower(), skipums); # Detect endif line
+                    # regexr_endifElseIf = regex_avoid(r'^\s*end(?:if)?(?:\s+\$\s*\n\s*|\s+)else(?:\s+\$\s*\n\s*|\s+)if', bevItUp.lower(), skipums); # Detect endif line
+                    regexr_endifElseIf = regex_avoid(r'^\s*end(?:if)?(?:\s+\$\s*\n\s*|\s+)else(?:\s+\$\s*\n\s*|\s+)el@if', bevItUp.lower(), skipums); # Detect endif line
+                    if( regexr_endifElseIf is not None ): # This becomes an elif():
+                        spacer -= 4; # Move everything back NOW
+                        FLG_logicMech['if'] -= 1; # Decrement the open ifs
+                        bevItUp = 'el@if '+bevItUp[regexr_endifElseIf.end():]; # Convert to an 'el@if' custom elif call to trigger the if logic without replicating it
+                    elif( regexr_endifElse is not None ):
+                        regexr_endifElseBegin = regex_avoid(r'^\s*end(?:if)?(?:\s+else|\s+\$\s*\n\s*else)(?:\s+begin|\s+\$\s*\n\s*begin)(?:\s*$|\s*;)', bevItUp.lower(), None); # Detect if .. then AND if .. then begin, treat them the same
+                        if( regexr_endifElseBegin is not None ):
+                            spacer -= 4; # Move everything back NOW
+                            FLG_spacer = 1; # Move it up for next time
+                            if( len(bevItUp) == regexr_endifElseBegin.end() ):
+                                bevItUp = 'else:'; # Rename it correctly
+                            else:
+                                bevItUp = 'else: '+bevItUp[regexr_endifElseBegin.end()-1:]; # Rename it correctly and keep any comment or anything (-1 to keep the comment)
+                            # END IF
+                        else:
+                            regexr_elseBeginEnd= regex_avoid(r'\s+else\s+begin\s*$', bevItUp.lower(), None); # Catch a line ending with "else begin" which needs its stuff till "endelse" to be captured inside
+                            if( regexr_elseBeginEnd is not None ):
+                                idl.insert(i+1, bevItUp[regexr_endifElse.end():]); # Declare the else stuff here
+                                jk = 2; # Prep
+                                while( not regex_avoid_logic(r'^\s*endelse(?:\s+|$)', idl[i+jk].lower(), skipums) ): # Detect endelse line
+                                    jk += 1; # Increment up
+                                # END WHILE                                
+                                idl.insert(i+jk+1, 'endelse'); # Declare the end of the else
+                                fend += jk + 1; # More fend to cover
+                            else:
+                                idl.insert(i+1, bevItUp[regexr_endifElse.end():]); # Declare the else stuff here
+                                idl.insert(i+2, 'endelse'); # Declare the end of the else
+                                fend += 2; # More fend to cover
+                            # END IF
+                            
+                            spacer -= 4; # Move everything back NOW
+                            FLG_spacer = 1; # Move it up for next time
+                            bevItUp = 'else:' # Remove the split bit, add a :
+                        # END IF
+                        FLG_logicMech['if'] -= 1; # Decrement the open ifs
+                        FLG_logicMech['else'] += 1; # Increment the open elses
+                    else: # Regular endif
+                        spacer -= 4; # Move everything back NOW
+                        bevItUp = '# END IF '+bevItUp[regexr_endif.end():]; # Rename it correctly and keep any comment or anything
+                        FLG_logicMech['if'] -= 1; # Decrement the open ifs
                     # END IF
                 # END IF
                 
-                # CHeck if "endelse" starts the line - gotta
-                regexrL = regex_avoid_logic(r'^\s*endelse *', bevItUp.lower(), skipums); # Regex it
-                if( regexrL == True ):
-                    # EZ PZ it's donezo line
-                    regexr = regex_avoid(r'(^\s*endelse)', bevItUp.lower(), skipums); # Regex it
-                    bevItUp = '; END IF'+bevItUp[regexr.end():]; # Simple!
+                # Second deal with if
+                regexr_ifThen = regex_avoid(r'(?:^\s*|\s+\$\s*)(?:el@|else\s+)?if\s+[\s\S]+?\s+then(?:\s+begin\s+|\s+begin\s*$|\s*$|\s+\$\s+\n\s+|\s+)', bevItUp.lower(), skipums); # Detect if .. then AND if .. then begin, treat them the same
+                if( regexr_ifThen is not None ):
+                    # if( 'CalcGHA(t, UT' in bevItUp ):
+                    #     breakpoint()
+                    # r'^\s+if\s+[\s\S]+?\s+then(?:\s+|\s+$|\s+\$\s+\n\s+)if(?:\s+|\s+$)'
+                    # then begin chooses our path
+                    # IF then begin, it is easy. IF then is a oneliner that needs to be untangled there and then
+                    regexr_ifThenBegin = regex_avoid(r'^\s*(?:el@)?if(?:\s+\$\s*\n\s*|\s+)[\s\S]+?(?:\s+\$\s*\n\s*|\s+)then(?:\s+\$\s*\n\s*|\s+)begin(?:\s*$|\s*;)', bevItUp.lower(), None); # Detect if .. then AND if .. then begin, treat them the same
+                    if( regexr_ifThenBegin is None ):
+                        # if .. then .. else, possibly multiple chains
+                        if_aligner = recursive_ifer(bevItUp, skipums=skipums)[0][0]; # Recursively scan the if .. then .. else line(s)
+                        
+                        # Now crank through everything else in the aligner
+                        line2inert, FLG_inertEndelse = recursive_ifserter(if_aligner, line2inert=[]); # Recursively make the lines to insert, don't get the 1st one b/c that's for bevItUp !! needs line2inert=[] or else it recursively builds on line2inert for reasons I cannot parse right now; without line2inert keyword provided shouldn't it initialize a local var line2inert that's empty??
+                        line2inert = line2inert[1:]; # Get it out
+                        for jk in range(1, len(line2inert)+1):
+                            idl.insert(i+jk, line2inert[jk-1]); # Insert the rebuilt lines
+                        # END FOR jk
+                        fend += len(line2inert); # More fend to cover
+                        if( FLG_inertEndelse > 0 ): # Tack on an extra endelse that we couldn't because if_aligner & line2inert didn't have the context
+                            jk = len(line2inert) + 1; # Prep
+                            while( not regex_avoid_logic(r'^\s*endelse(?:\s+|$)', idl[i+jk].lower(), skipums) ): # Detect endelse line
+                                jk += 1; # Increment up
+                            # END WHILE                                
+                            idl.insert(i+jk+1, 'endelse'); # Declare the end of the else
+                            fend += jk + 1; # More fend to cover
+                        # END IF
+                        bevItUp = if_aligner['if'][1]+'( '+if_aligner['if'][0]+' ):'; # Bamzo
+                        FLG_spacer = 1; # Move it up for next time
+                        FLG_logicMech['if'] += 1; # Increment the open ifs
+                    else:
+                        regexr_ifThen_start = regex_avoid(r'^\s*(?:el@)?if\s+[\s\S]+?\s+then(?:\s+begin\s+|\s+begin\s*$|\s*$|\s+\$\s+\n\s+|\s+)', bevItUp.lower(), skipums); # Detect if .. then AND if .. then begin, treat them the same
+                        regexr_ifMore = regex_avoid(r'^\s*(?:el@)?if(?:\s+\$\s*\n\s*|\s+)[\s\S]+?(?:\s+\$\s*\n\s*|\s+)then(?:\s+\$\s*\n\s*|\s+)if', bevItUp.lower(), skipums); # Detect if .. then AND if .. then begin, treat them the same
+                        # regexr_ifThenBegin = regex_avoid(r'^\s*(?:el@)?if(?:\s+\$\s*\n\s*|\s+)[\s\S]+?(?:\s+\$\s*\n\s*|\s+)then(?:\s+\$\s*\n\s*|\s+)begin(?:\s*$|\s*;)', bevItUp.lower(), None); # Detect if .. then AND if .. then begin, treat them the same
+                        regexr_ifThenElse = regex_avoid(r'^\s*(?:el@)?if(?:\s+\$\s*\n\s*|\s+)[\s\S]+?(?:\s+\$\s*\n\s*|\s+)then\s+[\s\S]+?(?:\s+\$\s*\n\s*|\s+)else', bevItUp.lower(), skipums); # Detect if .. then AND if .. then begin, treat them the same
+                        regexr_justThen = regex_avoid(r'\s*then(?:\s+begin\s+|\s*$|\s+\$\s+\n\s+|\s+)', bevItUp[:regexr_ifThen_start.end()].lower(), skipums); # Detect if .. then AND if .. then begin, treat them the same
+                        xtra = ''; # Hold extra stuff
+                        if( (regexr_ifMore is not None) and (regexr_ifThenElse is not None) ):
+                            # Invalidate if else detection if else is after the next if
+                            if( regexr_ifThenElse.end() > regexr_ifMore.end() ):
+                                regexr_ifThenElse = None; # For another if in the statement (ugh)
+                            # END IF
+                        # END IF
+                        if( regexr_ifThenBegin is not None ):
+                            if( regexr_ifThenBegin.end() != len(bevItUp) ):
+                                xtra = bevItUp[regexr_ifThenBegin.end()-1:]; # Hold anything else as a comment after the begin bit, if there's anyhting else it has to be a comment so add the comment back because we cut that out
+                            # END IF
+                        elif( regexr_ifThenElse is not None ):
+                            line2line = endOfTheLiner(bevItUp[regexr_ifThen_start.end():regexr_ifThenElse.end()]); # Get the line to put in at a later line
+                            idl.insert(i+1, line2line[:line2line.rfind('else')]); # After the if .. then, split onto a new line
+                            idl.insert(i+2, 'endif else begin'); # Declare a new `endif else begin` line
+                            line2line = bevItUp[regexr_ifThenElse.end():]; # Get the rest
+                            regexr_ifThen_start = regex_avoid(r'(?:\s+\$\s*\n\s*|\s+)else(?:\s+\$\s*\n\s*|\s+)', line2line.lower(), skipums); # Detect if .. then AND if .. then begin, treat them the same
+                            if( regexr_ifThen_start is None ):
+                                idl.insert(i+3, bevItUp[regexr_ifThenElse.end():]); # Declare the else stuff here
+                                idl.insert(i+4, 'endelse'); # Declare the end of the else
+                                fend += 4; # More fend to cover
+                            else:
+                                idl.insert(i+3, line2line[:regexr_ifThen_start.start()]); # Declare the else stuff here
+                                idl.insert(i+4, 'endelse'); # Declare the end of the else
+                                regexr_ifFirst = regex_avoid(r'(?:\s+\$\s*\n\s*|\s+)else(?:\s+\$\s*\n\s*|\s+)if(?:\s+\$\s*\n\s*|\s+)', line2line, skipums); # Get the first if
+                                if( regexr_ifFirst is not None ):
+                                    idl.insert(i+5, 'el@if '+line2line[regexr_ifFirst.end():]); # Everything after the if on a new line, let the code figure it out (I hope)
+                                else:
+                                    idl.insert(i+5, newLineCleaner(line2line[regexr_ifThen_start.start():])); # Declare the end of the else
+                                # END IF
+                                fend += 5; # More fend to cover
+                            # END IF
+                        else:
+                            idl.insert(i+1, bevItUp[regexr_ifThen_start.end():]); # After the if .. then, split onto a new line and let it go from there
+                            idl.insert(i+2, 'endif'); # Because no 'begin', it needs and ENDIF to finish it off
+                            fend += 2; # More fend to cover
+                        # END IF
+                        FLG_spacer = 1; # Move it up for next time
+                        bevItUp = bevItUp[:regexr_justThen.start()]+':'+xtra; # Remove the split bit, add a :
+                        FLG_logicMech['if'] += 1; # Increment the open ifs
+                    # END IF
+                # END IF
+                
+                # Third deal with endelse
+                regexr_endelse = regex_avoid(r'^\s*endelse(?:\s+|$)', bevItUp.lower(), skipums); # Detect endif line
+                if( regexr_endelse is not None ):
+                    # breakpoint()
                     spacer -= 4; # Move everything back NOW
-                    FLG_ELSE_open -= 1; # Nice
-                    FLG_lastOpen.pop(len(FLG_lastOpen) - FLG_lastOpen[::-1].index('else') - 1); # Remove from here as well
-                    # FLG_IF_open -= 1; # Nice
+                    bevItUp = '# END IF '+bevItUp[regexr_endelse.end():]; # Rename it correctly and keep any comment or anything
+                    FLG_logicMech['else'] -= 1; # Decrement the open elses
                 # END IF
+                
+                # Forth deal with shorthand if/else
+                
+                
+                # # -------- Legacy IF/ELSE attempt --------
+                # # patch for "END" being able to END IF STATEMENTS not just ENDIF, consistency?? NONE; one thousand curses upon the language designers
+                # regexrL = regex_avoid_logic(r'^\s*(?:end[ ;]|end$)', bevItUp.lower(), skipums) and strisin( bevItUp.lstrip('\t').lstrip(' ').lower(), 'end', straddlers ); # Regex it
+                # if( regexrL and ((FLG_IF_open > 0) or (FLG_ELSE_open > 0) or (FLG_case > 0) or (FLG_FOR_open > 0)) ):
+                #     regexr = regex_avoid(r'(\s*end\s*)', bevItUp.lower(), skipums); # Regex it
+                #     if( len(FLG_lastOpen) == 0 ):
+                #         if( FLG_IF_open > 0 ):
+                #             bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endif' ); # Replace the bit!
+                #         elif ( FLG_ELSE_open > 0 ):
+                #             bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endelse' ); # Replace the bit!
+                #         elif ( FLG_case > 0 ):
+                #             bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '' ); # Wipe it out, unnecessary
+                #         elif ( FLG_FOR_open > 0 ):
+                #             bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endfor' ); # Replace the bit!
+                #         # END IF
+                #     else:
+                #         if( (FLG_lastOpen[-1] == 'if') and (FLG_IF_open > 0) ):
+                #             if( (FLG_case > 0) and (FLG_caseIf == False) ):
+                #                 bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '' ); # Replace the bit!
+                #             else:
+                #                 bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endif' ); # Replace the bit!
+                #             # END IF
+                #         elif( (FLG_lastOpen[-1] == 'else') and (FLG_ELSE_open > 0) ):
+                #             bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endelse' ); # Replace the bit!
+                #         elif( (FLG_lastOpen[-1] == 'case') and (FLG_case > 0) ):
+                #             bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '' ); # Replace the bit!
+                #         elif( (FLG_lastOpen[-1] == 'for') and (FLG_FOR_open > 0) ):
+                #             bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endfor' ); # Replace the bit!
+                #         else:
+                #             print('Unequal if/else/for counter!')
+                #             breakpoint()
+                #             if( FLG_IF_open > 0 ):
+                #                 bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endif' ); # Replace the bit!
+                #             elif ( FLG_ELSE_open > 0 ):
+                #                 bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endelse' ); # Replace the bit!
+                #             elif ( FLG_case > 0 ):
+                #                 bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '' ); # Wipe it out, unnecessary
+                #             elif ( FLG_FOR_open > 0 ):
+                #                 bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'endfor' ); # Replace the bit!
+                #             # END IF
+                #         # END IF
+                #         # FLG_lastOpen.pop(-1); # Ditch it
+                #     # END IF
+                # # END IF
                                 
-                # if statement shorthand ? hooboy
-                regexr = regex_avoid(r'(\s+\?\s+)', bevItUp, skipums); # Regex it
-                if( regexr is not None ):
-                    # Slice n dice - get the "if" and the equals stuff
-                    # FACTS: there must be an = sign
-                    # One variable before = is assigned
-                    # After = and before ? is if statement
-                    # After ? and before : is "if then" line
-                    # After : is "else" line
-                    loc_q = bevItUp[regexr.start():regexr.end()].find('?') + regexr.start(); # Get exactly where it at
-                    loc_eq = bevItUp.find('=');  # Don't need work, there left most = must be legit
-                    regexr = regex_avoid(r'(\s+:\s+)', bevItUp, skipums); # Regex it
-                    loc_col = bevItUp[regexr.start():regexr.end()].find(':') + regexr.start(); # Get exactly where it at
-                    v_eq = bevItUp[:loc_eq+1]+' '; # Get the assignment variable, transposed over to upcomming lines
-                    v_if = 'if( '+bevItUp[loc_eq+1:loc_q].strip(' ').lstrip('(').rstrip(')')+' ):'; # Get the if statement, build it
-                    v_then = v_eq+bevItUp[loc_q+1:loc_col].strip(' '); # Get the if statement
-                    v_else = v_eq+bevItUp[loc_col+1:].strip(' '); # Get the if statement
-                    # update bev
-                    bevItUp = v_if;
-                    FLG_spacer = 1; # Move it up for next time
-                    # Insert the lines as needed into idl to find later
-                    idl.insert(i+1, v_then);
-                    idl.insert(i+2, 'endif else begin'); # IDL-else
-                    idl.insert(i+3, v_else);
-                    idl.insert(i+4, 'endelse');
-                    fend += 4; # More fend to cover
-                    FLG_IF_open += 1; # Great
-                    FLG_lastOpen.append('if');
-                # END IF
+                # # If statement - get into it
+                # # First deal with endif else if
+                # regexr = regex_avoid(r'^\s*endif[ \$\n]+else[ \$\n]*if', bevItUp.lower(), skipums); # Regex it
+                # if( regexr is not None ):
+                #     FLG_elif = True; # Trigger
+                #     if( FLG_elifSplitLine == True ):
+                #         FLG_lastOpen.append('if'); # Undo some stuff
+                #         codez.pop(-1); # Remove the last line which is an # END IF, added b/c couldn't know ya know
+                #         FLG_elifSplitLine = False; # All good
+                #     else:
+                #         spacer -= 4; # Move everything back NOW
+                #     # END IF
+                #     regexr = regex_avoid(r'^\s*endif[ \$\n]+else[ \$\n]*', bevItUp.lower(), skipums); # Regex it
+                #     bevItUp = strreplace(bevItUp, regexr.start(), regexr.end(), ''); # Nix else so it's an if statement and the if statement can handle it
+                # else:
+                #     FLG_elif = False; # Reset
+                #     # if( FLG_elif == True ):
+                #     #     regexr_start = regex_avoid(r'^\s*endif *else', bevItUp.lower(), skipums); # Regex it
+                #     #     if( regexr_start is not None ):
+                #     #         breakpoint()
+                #     # else:
+                #     #     FLG_elif = False; # Reset
+                #     # # END IF
+                # # END IF
+                # # Then deal with else if mid-line
+                # if( FLG_IF_open > 0 ):
+                #     regexr = regex_avoid(r'else *if +', bevItUp.lower(), skipums); # Regex it
+                #     if( regexr is not None ):
+                #         regexr_start = regex_avoid(r'^\s*else *if', bevItUp.lower(), skipums); # Regex it
+                #         if( regexr_start is not None ):
+                #             FLG_elif = True; # Trigger
+                #             spacer -= 4; # Move everything back NOW
+                #             regexr = regex_avoid(r'^\s*else', bevItUp.lower(), skipums); # Regex it
+                #             bevItUp = strreplace(bevItUp, regexr.start(), regexr.end(), ''); # Nix else so it's an if statement and the if statement can handle it
+                #         else:
+                #             # Eject it so it can be dealt with later
+                #             FLG_elifSplitLine = True; # Yep it gets so weird
+                #             idl.insert(i+1, 'endif '+bevItUp[regexr.start():]); # Byeee
+                #             fend += 1; # More fend to cover
+                #             bevItUp = strreplace(bevItUp, regexr.start(), len(bevItUp), '').rstrip(' ').rstrip('$\n'); # Make it so it's a regular call
+                #         # END IF
+                #     # END IF
+                # # END IF
+                # # CHeck if "IF" starts the line - gotta
+                # regexr = regex_avoid(r'^\s*if', bevItUp.lower(), skipums); # Regex it
+                # if( regexr is not None ):
+                #     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), ' if' ); # Enforce lower-case if
+                #     regexr = regex_avoid(r'^\s*if\s*', bevItUp.lower(), skipums); # Regex it
+                #     regexr_ifMore = regex_avoid(r' +if +', bevItUp[regexr.end():].lower(), skipums); # Regex it
+                #     # Determine what kind of if we're working with
+                #     if( regexr_ifMore is None ):
+                #         regexr_thenBegin = regex_avoid(r'\s*then +begin\s*', bevItUp.lower(), skipums)
+                #         regexr_then = regex_avoid(r'\s+then\s+', bevItUp.lower(), skipums); # Ask for it for real
+                #         regexr_else = regex_avoid(r'\s+else\s+', bevItUp.lower(), skipums); # Ask for it for real
+                #         regexr_elseBegin = regex_avoid(r'\s+else +begin\s*', bevItUp.lower(), skipums); # Ask for it for real
+                #         regexr_thenIf = regex_avoid(r'\s+then(?:\s+|\s+$|\s+\$\s+\\n\s+)if(?:\s+|\s+$)', bevItUp.lower(), skipums); # Ask for it for real
+                #     else:
+                #         # If there are more ifs in this line, which can happen, limit the lookahead
+                #         # if( fileName.lower() == 'coords.pro' and 'gha = calcgha' in bevItUp.lower() ):
+                #         #     breakpoint()
+                #         regexr_thenBegin = regex_avoid(r'\s*then +begin\s*', bevItUp[:regexr.end()+regexr_ifMore.start()].lower(), skipums);
+                #         regexr_then = regex_avoid(r'\s+then(?:\s+|$)', bevItUp[:regexr.end()+regexr_ifMore.start()].lower(), skipums); # Ask for it for real
+                #         regexr_else = regex_avoid(r' +else(?:\s+|$)', bevItUp[:regexr.end()+regexr_ifMore.start()].lower(), skipums); # Ask for it for real
+                #         regexr_elseBegin = regex_avoid(r' +else +begin\s*', bevItUp[:regexr.end()+regexr_ifMore.start()].lower(), skipums); # Ask for it for real
+                #         regexr_thenIf = regex_avoid(r'\s+then(?:\s+|\s+$|\s+\$\s+\\n\s+)if(?:\s+|\s+$)', bevItUp[regexr.end():].lower(), skipums); # Ask for it for real
+                #     # END IF
+                #     if( (regexr_thenBegin is not None) and (regexr_elseBegin is not None) ): # captures if <> then begin <> endif else begin <> endelse
+                #         # ez pz works right
+                #         bevItUp_lite = {}; # Build it
+                #         bevItUp_lite['if'] = bevItUp[:regexr_thenBegin.end()]; # Bam
+                #         regexr_endIf = regex_avoid(r'\s+endif\s*', bevItUp.lower(), skipums); # Regex it #.lstrip('\t').lstrip(' ')
+                #         bevItUp_lite['if state'] = bevItUp[regexr_thenBegin.end():regexr_endIf.start()].lstrip(' ').rstrip(' ').lstrip('&').rstrip('&'); # Bam
+                #         bevItUp_lite['if end'] = bevItUp[regexr_endIf.start():regexr_endIf.end()]; # Bam
+                #         bevItUp_lite['else'] = bevItUp[regexr_elseBegin.start():regexr_elseBegin.end()]; # Bam
+                #         regexr_endelse = regex_avoid(r'\s+endelse\s*(:?;|$)', bevItUp.lower(), skipums); # Regex it #.lstrip('\t').lstrip(' ')
+                #         bevItUp_lite['else state'] = bevItUp[regexr_elseBegin.end():regexr_endelse.start()].lstrip(' ').rstrip(' ').lstrip('&').rstrip('&'); # Bam
+                #         bevItUp_lite['else end'] = bevItUp[regexr_endelse.start():regexr_endelse.end()]; # Bam
+                #         bevItUp_lite['the rest'] = bevItUp[regexr_endelse.end():]; # Bam
+                        
+                #         # Now rebuild, it's a long one
+                #         idl.insert(i+1,bevItUp_lite['if state']); # Tack on next line manually
+                #         idl.insert(i+2,bevItUp_lite['if end']+' '+bevItUp_lite['else']); # End the if
+                #         idl.insert(i+3,bevItUp_lite['else state']); # End the else
+                #         idl.insert(i+4,bevItUp_lite['else end']+bevItUp_lite['the rest']); # End the else
+                #         fend += 4; # More fend to cover
+                        
+                #         # Prep for the rest
+                #         FLG_spacer = 1; # Move it up for next time
+                #         regexr_then = None; # These are turned off to avoid later steps assuming we kept this as one statement
+                #         regexr_else = None;
+                #         regexr_elseBegin = None;
+                        
+                #         # Finalize, fix up the if statement and keep it for here-and-now
+                #         bevItUp = strreplace( bevItUp_lite['if'], regexr_thenBegin.start(), regexr_thenBegin.end(), ': ' ); # Fix up the if statement
+                #     elif( regexr_thenBegin is not None ):
+                #         # ez pz works right
+                #         if( regexr_thenBegin.end() == len(bevItUp) ):
+                #             bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ':' ); # Actual end, so no space
+                #         else:
+                #             bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ': ' ); # Comment or something after, so space
+                #         # END IF
+                #         FLG_spacer = 1; # Move it up for next time
+                #     elif( (regexr_then is not None) and (regexr_else is None) and (regexr_elseBegin is None) and (regexr_thenIf is None) ):
+                #         regexr_holladolla = regex_avoid(r'^\s*\$(\s|\n)*\s*', bevItUp[regexr_then.end():].lower(), skipums);
+                #         regexr_holladollaCommy = regex_avoid(r'\$ *;.*\n', bevItUp[regexr_then.end():].lower(), skipums);
+                #         newLineCntr = 1; # Prep it
+                #         if( regexr_holladolla is not None ):
+                #             idl.insert(i+newLineCntr,bevItUp[regexr_then.end()+regexr_holladolla.end():]); # Split at "then", put it into IDL for later (basically making it a real if statement)
+                #         elif( regexr_holladollaCommy is not None ):
+                #             idl.insert(i+newLineCntr,bevItUp[regexr_then.end():(regexr_holladollaCommy.start()+regexr_then.end())]+'$\n'); # Split at "then", put it into IDL for later (basically making it a real if statement)
+                #             newLineCntr += 1; # Increment
+                #             idl.insert(i+newLineCntr,bevItUp[(regexr_holladollaCommy.end()+regexr_then.end()):]+\
+                #                        bevItUp[(regexr_holladollaCommy.start()+regexr_then.end()+1):(regexr_holladollaCommy.end()+regexr_then.end()-1)]); # Split at "then", put it into IDL for later (basically making it a real if statement)
+                #         else:
+                #             idl.insert(i+newLineCntr,bevItUp[regexr_then.end():]); # Split at "then", put it into IDL for later (basically making it a real if statement)
+                #         # END IF
+                #         bevItUp = bevItUp[:regexr_then.start()]+':'; # Remove the split bit, add a :
+                #         if( FLG_caseIf == False ): # Don't add an endif if it's a case statement thing
+                #             newLineCntr += 1; # Increment
+                #             idl.insert(i+newLineCntr,'endif'); # Tack one more to finish it off as a real big if statement - this is to deal with spaces better
+                #         # END IF
+                #         fend += newLineCntr; # More fend to cover
+                #         FLG_spacer = 1; # Move it up for next time
+                #     elif( (regexr_then is not None) and (regexr_thenIf is not None) ):
+                #         regexr_thenIf_if = regex_avoid(r'\s+if', bevItUp[regexr.end()+regexr_thenIf.start():].lower(), skipums); # Regex it
+                #         idl.insert(i+1,bevItUp[regexr.end()+regexr_thenIf.start()+regexr_thenIf_if.start():]); # After the 1st if .. then, split into a new line and let that work itself out
+                #         fend += 1; # More fend to cover
+                #         FLG_spacer = 1; # Move it up for next time
+                #         bevItUp = bevItUp[:regexr_then.start()]+':'; # Remove the split bit, add a :
+                #     elif( (regexr_then is not None) and (regexr_elseBegin is not None) ):
+                #         idl.insert(i+1,bevItUp[regexr_then.end():regexr_else.start()].strip('$\n')); # Split at "then", put it into IDL for later (basically making it a real if statement)
+                #         idl.insert(i+2,'else@'); # Tack on the else: manually
+                #         fend += 2; # More fend to cover
+                #         FLG_spacer = 1; # Move it up for next time
+                #         bevItUp = bevItUp[:regexr_then.start()]+':'; # Remove the split bit, add a :
+                #     elif( (regexr_then is not None) and (regexr_else is not None) ):
+                #         line2drop = bevItUp[regexr_then.end():regexr_else.start()].strip('$\n');
+                #         regexr_lostComment = regex_avoid(r'^\s*;', line2drop, skipums);
+                #         lostComment = ''; # Holding nothing usually
+                #         if( regexr_lostComment is not None ):
+                #             regexr_newLine = regex_avoid(r'^\s*;.*\n', line2drop, skipums);
+                #             lostComment = line2drop[:regexr_newLine.end()].strip('$\n'); # Catch that lost comment
+                #             line2drop = line2drop[regexr_newLine.end():]; # Trim off the comment
+                #         # END IF
+                #         idl.insert(i+1,line2drop.strip('$\n')); # Split at "then", put it into IDL for later (basically making it a real if statement)
+                #         idl.insert(i+2,'else@'); # Tack on the else: manually
+                #         idl.insert(i+3,bevItUp[regexr_else.end():].strip('$\n')); # Split at "then", put it into IDL for later (basically making it a real if statement)
+                #         idl.insert(i+4,'endelse'); # Tack one more to finish it off as a real big if statement - this is to deal with spaces better
+                #         fend += 4; # More fend to cover
+                #         FLG_spacer = 1; # Move it up for next time
+                #         bevItUp = bevItUp[:regexr_then.start()]+':'+lostComment; # Remove the split bit, add a :
+                #         if( FLG_elif == True ):
+                #             #!!!
+                #             FLG_IF_open -= 1; # Nice
+                #         # END IF
+                #     else:
+                #         print('Not supposed to if like this??');
+                #         breakpoint()
+                #     # END IF
+                #     if( FLG_elif == True ):
+                #         bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'elif ' ); # Make it an elif
+                #     else:
+                #         if( FLG_caseIf == False ):
+                #             FLG_IF_open += 1; # Great
+                #             FLG_lastOpen.append('if');
+                #             if( (regexr_then is not None) and (regexr_else is not None) ):
+                #                 FLG_IF_open -= 1; # Nice
+                #                 FLG_lastOpen.pop(len(FLG_lastOpen) - FLG_lastOpen[::-1].index('if') - 1); # Remove from here as well
+                #             # END IF
+                #         # END IF
+                #     # END IF
+                    
+                #     # Catch ~ which needs to become "not"
+                #     regexr = regex_avoid(r'(\s+~[a-zA-Z])', bevItUp, skipums); # Regex it
+                #     if( regexr is not None ):
+                #         bevItUp = strreplace( bevItUp, regexr.start(), regexr.end()-1, ' not ' ); # Replace the bit!
+                #     # END IF
+                # # END IF
+
+                # # CHeck if "endif" starts the line - gotta
+                # regexrL = regex_avoid_logic(r'(^\s*endif *)', bevItUp.lower(), skipums); # Regex it #.lstrip('\t').lstrip(' ')
+                # if( regexrL == True ):
+                #     # Determine what kind of if we're working with
+                #     regexr_elseBegin = regex_avoid(r'else +begin', bevItUp.lower(), skipums)
+                #     regexr_else = regex_avoid(r' +else', bevItUp.lower(), skipums); # Ask for it for real
+                #     if( regexr_elseBegin is not None ):
+                #         bevItUp = 'else@'+bevItUp[regexr_elseBegin.end():]; # Simple!
+                #         FLG_spacer = 1; # Move it up for next time
+                #     elif( regexr_else is not None ):
+                #         # It's a long one
+                #         idl.insert(i+1,bevItUp[regexr_else.end():]); # Tack on next line manually
+                #         idl.insert(i+2,'endelse'); # End the else
+                #         fend += 2; # More fend to cover
+                #         bevItUp = 'else@'; # Only keep this for now, it'll trigger the next check
+                #     else:
+                #         spacer -= 4; # Move everything back NOW
+                #         regexr = regex_avoid(r'(\s*endif\s*)', bevItUp.lower(), skipums); # Regex it
+                #         bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), '; END IF' )
+                #     # END IF
+                #     if( 'if' in FLG_lastOpen ):
+                #         FLG_IF_open -= 1; # Nice
+                #         FLG_lastOpen.pop(len(FLG_lastOpen) - FLG_lastOpen[::-1].index('if') - 1); # Remove from here as well
+                #     elif( 'else' in FLG_lastOpen ): # You can end else statmeents with endif as well wqhyyyyyy
+                #         FLG_ELSE_open -= 1; # Ehh
+                #         FLG_lastOpen.pop(len(FLG_lastOpen) - FLG_lastOpen[::-1].index('else') - 1); # Remove from here as well
+                #     else:
+                #         print('if statement counter is off :(')
+                #         breakpoint()
+                #     # END IF
+                # # END IF
+                
+                # # Else statement - get into it
+                # # CHeck if "ELSE" starts the line - gotta
+                # regexrL = regex_avoid_logic(r'\s*else', bevItUp.lower(), skipums) and not regex_avoid_logic(r'endelse', bevItUp.lower(), skipums); # Regex it
+                # if( regexrL == True ): # If else is only ever used on a continued line, this can be simplified - not caring to find out now
+                #     # Determine what kind of else we're working with
+                #     regexr_elseAt = regex_avoid_logic(r'else@', bevItUp.lower(), skipums); # Already converted to Python style
+                #     if( regexr_elseAt  == True ):
+                #         spacer -= 4; # Move everything back NOW
+                #         FLG_spacer = 1; # Move it up for next time
+                #         FLG_ELSE_open += 1; # Great
+                #         FLG_lastOpen.append('else');
+                #     else:
+                #         regexr_else = regex_avoid(r'^\s*else', bevItUp.lower(), skipums);
+                #         regexr_elseColon = regex_avoid(r'else *:', bevItUp.lower(), skipums); # Switch statement, ignore it
+                #         regexr_elseNewLine = regex_avoid(r'\$(.|\n)*else\s*', bevItUp.lower(), skipums);
+                #         if( regexr_elseColon is None ): # Don't do this on a switch statement else:
+                #             if( regexr_else is not None ):
+                #                 spacer -= 4; # Move everything back NOW
+                #                 regexr_thenBegin = regex_avoid(r'(\s+then begin\s*)', bevItUp.lower(), skipums)
+                #                 regexr_then = regex_avoid(r'(\s+then\s+)', bevItUp.lower(), skipums); # Ask for it for real
+                #                 regexr_elseBegin = regex_avoid(r'\s+else\s+begin\s+', bevItUp.lower(), skipums); # Ask for it for real
+                #                 if( regexr_thenBegin is not None ):
+                #                     # ez pz works right
+                #                     if( regexr_thenBegin.end() == len(bevItUp) ):
+                #                         bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ':' ); # Actual end, so no space
+                #                     else:
+                #                         bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ': ' ); # Comment or something after, so space
+                #                     # END IF
+                #                     FLG_spacer = 1; # Move it up for next time      
+                #                     if( FLG_caseIf == False ):
+                #                         FLG_ELSE_open += 1; # Great
+                #                         FLG_lastOpen.append('else');
+                #                     # END IF
+                #                 elif( regexr_then is not None ):
+                #                     idl.insert(i+1,bevItUp[regexr_then.end():]); # Split at "then", put it into IDL for later (basically making it a real if statement)
+                #                     bevItUp = bevItUp[:regexr_then.start()]+':'; # Remove the split bit, add a :
+                #                     fend += 1; # More fend to cover
+                #                     if( FLG_caseIf == False ):
+                #                         idl.insert(i+2,'endelse'); # Tack one more to finish it off as a real big if statement - this is to deal with spaces better
+                #                         fend += 1; # More fend to cover
+                #                         FLG_ELSE_open += 1; # Great
+                #                         FLG_lastOpen.append('else');
+                #                     # END IF
+                #                 elif( regexr_elseBegin is not None ):
+                #                     bevItUp =  strreplace( bevItUp, regexr_elseBegin.start(), regexr_elseBegin.end(), 'else:' ); # Replace with an else:
+                #                     FLG_spacer = 1; # Move it up for next time
+                #                     if( FLG_caseIf == False ):
+                #                         FLG_ELSE_open += 1; # Great
+                #                         FLG_lastOpen.append('else');
+                #                     # END IF
+                #                 else:
+                #                     idl.insert(i+1,bevItUp[regexr_else.end():]); # After the else to form it into a real if/else
+                #                     bevItUp = bevItUp[:regexr_else.end()]+':'; # Remove the next line stuff, add a :
+                #                     fend += 1; # More fend to cover
+                #                     if( FLG_caseIf == False ):
+                #                         if( regex_avoid_logic(r'^\s*# END IF\s*$', codez[-1], []) ):
+                #                             codez.pop(-1); # Ditch that last # END IF
+                #                         else:
+                #                             breakpoint() # Not sure about that, should've had an # END IF
+                #                         # END IF
+                #                         spacer += 4; # Move everything UP NOW (between you and me, I shouldn't need to do this but oh well)
+                #                         idl.insert(i+2,'endelse'); # Tack one more to finish it off as a real big if statement - this is to deal with spaces better
+                #                         fend += 1; # More fend to cover
+                #                         FLG_ELSE_open += 1; # Great
+                #                         FLG_lastOpen.append('else');
+                #                     # END IF
+                #                     FLG_spacer = 1; # Move it up for next time
+                #                 # END IF
+                #             elif( regexr_elseNewLine is not None ):
+                #                 idl.insert(i+1,'else@'); # Tack on the else: manually
+                #                 idl.insert(i+2,bevItUp[regexr_elseNewLine.end():]); # Get bit after the else
+                #                 fend += 2; # More fend to cover
+                #                 bevItUp = bevItUp[:regexr_elseNewLine.start()]; # reduce bevitup to just the first line
+                #                 FLG_spacer = -1; # Move it back for next time (the else:)
+                #             else:
+                #                 print('Not supposed to if like this??');
+                #                 breakpoint()
+                #             # END IF
+                            
+                #             regexr_thenBegin = regex_avoid(r'(\s+then begin\s*)', bevItUp.lower(), skipums)
+                #             regexr_then = regex_avoid(r'(\s+then\s+)', bevItUp.lower(), skipums); # Ask for it for real
+                #             if( regexr_thenBegin is not None ):
+                #                 # ez pz works right
+                #                 if( regexr_thenBegin.end() == len(bevItUp) ):
+                #                     bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ':' ); # Actual end, so no space
+                #                 else:
+                #                     bevItUp = strreplace( bevItUp, regexr_thenBegin.start(), regexr_thenBegin.end(), ': ' ); # Comment or something after, so space
+                #                 # END IF
+                #                 FLG_spacer = 1; # Move it up for next time       
+                #                 FLG_ELSE_open += 1; # Great
+                #                 FLG_lastOpen.append('else');
+                #             elif( regexr_then is not None ):
+                #                 idl.insert(i+1,bevItUp[regexr_then.end():]); # Split at "then", put it into IDL for later (basically making it a real if statement)
+                #                 bevItUp = bevItUp[:regexr_then.start()]+':'; # Remove the split bit, add a :
+                #                 idl.insert(i+2,'endelse'); # Tack one more to finish it off as a real big if statement - this is to deal with spaces better
+                #                 fend += 2; # More fend to cover
+                #                 FLG_spacer = 1; # Move it up for next time
+                #                 FLG_ELSE_open += 1; # Great
+                #                 FLG_lastOpen.append('else');
+                #             # END IF
+                            
+                #             # Catch ~ which needs to become "not"
+                #             regexr = regex_avoid(r'(\s+~\s*[a-zA-Z])', bevItUp, skipums); # Regex it
+                #             if( regexr is not None ):
+                #                 bevItUp = strreplace( bevItUp, regexr.start(), regexr.end()-1, ' not ' ); # Replace the bit!
+                #             # END IF
+                #         # END IF
+                #     # END IF
+                # # END IF
+                
+                # # CHeck if "endelse" starts the line - gotta
+                # regexrL = regex_avoid_logic(r'^\s*endelse *', bevItUp.lower(), skipums); # Regex it
+                # if( regexrL == True ):
+                #     # EZ PZ it's donezo line
+                #     regexr = regex_avoid(r'(^\s*endelse)', bevItUp.lower(), skipums); # Regex it
+                #     bevItUp = '; END IF'+bevItUp[regexr.end():]; # Simple!
+                #     spacer -= 4; # Move everything back NOW
+                #     FLG_ELSE_open -= 1; # Nice
+                #     FLG_lastOpen.pop(len(FLG_lastOpen) - FLG_lastOpen[::-1].index('else') - 1); # Remove from here as well
+                #     # FLG_IF_open -= 1; # Nice
+                # # END IF
+                                
+                # # if statement shorthand ? hooboy
+                # regexr = regex_avoid(r'(\s+\?\s+)', bevItUp, skipums); # Regex it
+                # if( regexr is not None ):
+                #     # Slice n dice - get the "if" and the equals stuff
+                #     # FACTS: there must be an = sign
+                #     # One variable before = is assigned
+                #     # After = and before ? is if statement
+                #     # After ? and before : is "if then" line
+                #     # After : is "else" line
+                #     loc_q = bevItUp[regexr.start():regexr.end()].find('?') + regexr.start(); # Get exactly where it at
+                #     loc_eq = bevItUp.find('=');  # Don't need work, there left most = must be legit
+                #     regexr = regex_avoid(r'(\s+:\s+)', bevItUp, skipums); # Regex it
+                #     loc_col = bevItUp[regexr.start():regexr.end()].find(':') + regexr.start(); # Get exactly where it at
+                #     v_eq = bevItUp[:loc_eq+1]+' '; # Get the assignment variable, transposed over to upcomming lines
+                #     v_if = 'if( '+bevItUp[loc_eq+1:loc_q].strip(' ').lstrip('(').rstrip(')')+' ):'; # Get the if statement, build it
+                #     v_then = v_eq+bevItUp[loc_q+1:loc_col].strip(' '); # Get the if statement
+                #     v_else = v_eq+bevItUp[loc_col+1:].strip(' '); # Get the if statement
+                #     # update bev
+                #     bevItUp = v_if;
+                #     FLG_spacer = 1; # Move it up for next time
+                #     # Insert the lines as needed into idl to find later
+                #     idl.insert(i+1, v_then);
+                #     idl.insert(i+2, 'endif else begin'); # IDL-else
+                #     idl.insert(i+3, v_else);
+                #     idl.insert(i+4, 'endelse');
+                #     fend += 4; # More fend to cover
+                #     FLG_IF_open += 1; # Great
+                #     FLG_lastOpen.append('if');
+                # # END IF
                 
                 # For statement - get into it
                 regexr = regex_avoid(r'^\s*for +', bevItUp.lower(), skipums); # Regex it
@@ -2435,8 +3300,8 @@ def trans( idl, libDir = None ):
                         for j in range(i+1, fend):
                             regexr_until = regex_avoid(r'^\s*endrep +until', idl[j].lower(), skipums); # Regex it
                             if( regexr_until is not None ):
-                                regexr_end = regex_avoid(r'^\s*endrep +until .+?(;|$)', idl[j].lower(), skipums); # Regex it
-                                if( idl[j][regexr_end.end()-1] == ';' ):
+                                regexr_end = regex_avoid(r'^\s*endrep\s+until\s[\s\S]+?(;|$)', idl[j].lower(), skipums, FLG_nukeSkipums=True); # Regex it
+                                if( (regexr_end.end() != len(idl[j])) and (idl[j][regexr_end.end()] == ';') ):
                                     codez4later.append('FLG_runOnce = True'); # Ensure the while runs once, a requisite of "repeat"
                                     bevItUp = 'while( FLG_runOnce or '+idl[j][regexr_until.end():regexr_end.end()-1]+' ):'; # Create the while
                                     idl[j] = 'endwhile '+idl[j][regexr_end.end():]; # Call it a day there
@@ -2469,7 +3334,7 @@ def trans( idl, libDir = None ):
                         idl.insert(i+2, 'endwhile');
                         fend += 2; # More fend to cover
                         
-                        regexr_end = regex_avoid(r'^\s*repeat [\s\S]+ until .+?(?:;|$)', bevItUp.lower(), skipums); # Regex it
+                        regexr_end = regex_avoid(r'^\s*repeat [\s\S]+ until [\s\S]+?(?:;|$)', bevItUp.lower(), skipums); # Regex it
                         if( bevItUp[regexr_end.end()-1] == ';' ):
                             bevItUp = 'while( '+bevItUp[regexr_until.end():regexr_end.end()-1].strip(' ')+' ): '+bevItUp[regexr_end.end():]; # Create the while
                         else:
@@ -2548,17 +3413,20 @@ def trans( idl, libDir = None ):
                     # END IF
                 # END IF
                 
-                # & statement split
-                regexrL = regex_avoid_logic(r'&', bevItUp, skipums); # Regex it
-                if( regexrL == True ):
-                    # Got a line split, could be many
-                    while(  regex_avoid_logic(r'&', bevItUp, skipums, FLG_rev=True) ):
-                        regexr = regex_avoid(r'&', bevItUp, skipums, FLG_rev=True); # Get where that last & at
-                        idl.insert(i+1,bevItUp[regexr.end():]); # Split at "then", put it into IDL for later (basically making it a real if statement)
-                        fend += 1; # More fend to cover
-                        bevItUp = bevItUp[:regexr.start()]; # Remove the split bit, add a :
-                    # END WHILE
-                # END IF
+                # # & statement split
+                # if( 'if( (Exists(YZero))' in bevItUp):
+                #     breakpoint()
+                # regexrL = regex_avoid_logic(r'&', bevItUp, skipums); # Regex it
+                # if( regexrL == True ):
+                #     # Got a line split, could be many
+                #     breakpoint()
+                #     while(  regex_avoid_logic(r'&', bevItUp, skipums, FLG_rev=True) ):
+                #         regexr = regex_avoid(r'&', bevItUp, skipums, FLG_rev=True); # Get where that last & at
+                #         idl.insert(i+1,bevItUp[regexr.end():]); # Split at "then", put it into IDL for later (basically making it a real if statement)
+                #         fend += 1; # More fend to cover
+                #         bevItUp = bevItUp[:regexr.start()]; # Remove the split bit, add a :
+                #     # END WHILE
+                # # END IF
                 
                 # Function call, yolo mode
                 # alexa laser eyes idl
@@ -2599,7 +3467,11 @@ def trans( idl, libDir = None ):
                                 if( libDir == None ):
                                     codez.insert(0, 'from '+funName+' import '+funName ); # Get the import at the top
                                 else:
-                                    codez.insert(0, 'from '+os.path.basename(libDir)+'.'+funName+' import '+funName ); # Get the import at the top
+                                    if( convwd == libDir ):
+                                        codez.insert(0, 'from '+funName+' import '+funName ); # Get the import at the top
+                                    else:
+                                        codez.insert(0, 'from '+os.path.basename(libDir)+'.'+funName+' import '+funName ); # Get the import at the top
+                                    # END IF
                                 # END IF
                                 importOffset += 1; # Increment the offset
                                 importedMemory.append(funName); # Add it on
@@ -2706,7 +3578,7 @@ def trans( idl, libDir = None ):
                     elif( (regexr_fun_avoidRecurse == False ) and (funName not in builtIns) ):
                         # --- Determine function file and where it at ---
                         # Look in the library paths
-                        finds = glob(os.path.join(os.getcwd(),'**',funName+'.pro'), recursive=True); # Glob it up
+                        finds = glob(os.path.join(convwd,'**',funName+'.pro'), recursive=True); # Glob it up
                         if( len(finds) > 0 ):
                             # --- Read in IDL file ---
                             with open(finds[0], 'r') as file: # use 1st hit
@@ -2716,12 +3588,12 @@ def trans( idl, libDir = None ):
                             # --- Rip into it ---
                             # Even if it is already converted, need defy_report to know if things are 
                             print('\n--- ON '+finds[0]+' ---');
-                            codez_fun, defy_report_fun = trans( idl_fun, libDir = libDir ); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
+                            codez_fun, defy_report_fun = trans( idl_fun, fileRN = finds[0].rstrip('.pro'), sourceDir = sourceDir, libDir = libDir, convertedDir = convertedDir); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
 
                             # --- Save converted Python ---
-                            # finds = glob(os.path.join(os.getcwd(),'**',funName+'.py'), recursive=True); # Glob it up (this was to check if already had it written, but it might need updating or something so might as well just do it)
+                            # finds = glob(os.path.join(convwd,'**',funName+'.py'), recursive=True); # Glob it up (this was to check if already had it written, but it might need updating or something so might as well just do it)
                             if( libDir == None ):
-                                with open(os.path.join(os.getcwd(),funName+'.py'), 'w') as file:
+                                with open(os.path.join(convwd,funName+'.py'), 'w') as file:
                                     file.write('\n'.join(linez for linez in codez_fun));
                                 # END WITH
                             else:
@@ -2735,7 +3607,11 @@ def trans( idl, libDir = None ):
                                 if( libDir == None ):
                                     codez.insert(0, 'from '+funName+' import '+funName ); # Get the import at the top
                                 else:
-                                    codez.insert(0, 'from '+os.path.basename(libDir)+'.'+funName+' import '+funName ); # Get the import at the top
+                                    if( convwd == libDir ):
+                                        codez.insert(0, 'from '+funName+' import '+funName ); # Get the import at the top
+                                    else:
+                                        codez.insert(0, 'from '+os.path.basename(libDir)+'.'+funName+' import '+funName ); # Get the import at the top
+                                    # END IF
                                 # END IF
                                 importOffset += 1; # Increment the offset
                                 importedMemory.append(funName); # Add it on
@@ -2841,6 +3717,7 @@ def trans( idl, libDir = None ):
                             
                             print('--- DONE WITH '+finds[0]+' ---');
                         else:
+                            # breakpoint()
                             print('WARNING: "'+funName+'.pro" was not found in the libs!');
                             print('Line in question: \n'+bevItUp);
                             print('Ignoring. Find it and this incantation will transform it too!\n');
@@ -2886,8 +3763,14 @@ def trans( idl, libDir = None ):
                     # END IF
                 # END IF
                 
+                # return - idl can have a comma after return, so remove that
+                regexr = regex_avoid(r'^\s*return\s*,', bevItUp.lower(), skipums); # Regex it
+                if( regexr is not None ):
+                    bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'return' ); # Replace the bit!
+                # END IF
+                
                 # message
-                regexr = regex_avoid(r'message *,', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])message\s*,', bevItUp.lower(), skipums); # Regex it
                 if( regexr is not None ):
                     # Nuke /STUFF - prob want to read them if make function that mimics message more
                     regexr_backslash = regex_avoid(r'(/\w+ *,)|(,/\w+ *$)', bevItUp.lower(), skipums); # Regex it
@@ -2920,7 +3803,7 @@ def trans( idl, libDir = None ):
                 # END IF
                 
                 # print - may get more intense
-                regexr = regex_avoid(r'print *,', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])print\s*,', bevItUp.lower(), skipums); # Regex it
                 if( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'print(' ); # Replace the bit!
                     regexr_comment = regex_avoid(r' *;', bevItUp, None); # Regex it
@@ -2934,7 +3817,7 @@ def trans( idl, libDir = None ):
                 # END IF
                 
                 # printf - holder for now
-                regexr = regex_avoid(r'printf *,', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])printf\s*,', bevItUp.lower(), skipums); # Regex it
                 if( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'printf(' ); # Replace the bit!
                     regexr_comment = regex_avoid(r' *;', bevItUp, None); # Regex it
@@ -2948,7 +3831,7 @@ def trans( idl, libDir = None ):
                 # END IF
                 
                 # remchar - this is a custom one, but it's ez pz in python
-                regexr = regex_avoid(r'remchar *,', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])remchar\s*,', bevItUp.lower(), skipums); # Regex it
                 if( regexr is not None ):
                     var2do_endComma = bevItUp[regexr.end():].find(',')+regexr.end(); # Where it at
                     var2do = bevItUp[regexr.end():var2do_endComma]; # The var to work on
@@ -2962,7 +3845,7 @@ def trans( idl, libDir = None ):
                 # END IF
                 
                 # strtrim
-                regexr = regex_avoid(r'strtrim *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])strtrim\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     endparenth = parenthesis_hunter(bevItUp[regexr.start():]) + regexr.start() + 1; # Yee
                     regexr_flag = regex_avoid(r'\( *[0-9] *,', mirrorU(bevItUp[regexr.start():endparenth]), skipums); # Regex it
@@ -2986,30 +3869,30 @@ def trans( idl, libDir = None ):
                         bevItUp = strinsert(bevItUp, endparenth, ".rstrip(' ')"); # Keep the strtrim call correct in case it's actually needed (seems a crutch for IDL mostly)
                     # END IF
                     bevItUp = strreplace(bevItUp, regexr.start(), regexr.end(), 'str('); # Replace the strrim call
-                    regexr = regex_avoid(r'strtrim *\(', bevItUp.lower(), skipums); # Regex it, make sure to get em all
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])strtrim\s*\(', bevItUp.lower(), skipums); # Regex it, make sure to get em all
                 # END WHILE
                 
                 # strupcase
-                regexr = regex_avoid(r'strupcase *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])strupcase\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     endparenth = parenthesis_hunter(bevItUp[regexr.start():]) + regexr.start() + 1; # Yee
                     bevItUp = strinsert(bevItUp, endparenth, '.upper()'); # Keep the strtrim call correct in case it's actually needed (seems a crutch for IDL mostly)
                     bevItUp = strreplace(bevItUp, regexr.start(), regexr.end(), 'str('); # Replace the strrim call
-                    regexr = regex_avoid(r'strupcase *\(', bevItUp.lower(), skipums); # Regex it, make sure to get em all
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])strupcase\s*\(', bevItUp.lower(), skipums); # Regex it, make sure to get em all
                 # END WHILE
                 
                 # N_elements
-                regexr = regex_avoid(r'(n_elements *\(\s*\w+\s*\))', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(n_elements\s*\(\s*\w+\s*\))', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     repl = bevItUp[regexr.start():regexr.end()]; # Get the thing to replace
-                    repl = 'len( '+repl[repl.find('(')+1:repl.rfind(')')]+' )'; # Make a new, good strang
+                    repl = 'l@en( '+repl[repl.find('(')+1:repl.rfind(')')]+' )'; # Make a new, good strang
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), repl ); # Replace the bit!
                     
                     regexr = regex_avoid(r'(n_elements *\(\s*\w+\s*\))', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # PLOT SERIES: window
-                regexr = regex_avoid(r'^\s*window *,', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'^\s*window\s*,', bevItUp.lower(), skipums); # Regex it
                 if( regexr is not None ):
                     regexr_comment = regex_avoid(r';', bevItUp, None); # Regex it
                     if( regexr_comment is None ):
@@ -3050,7 +3933,7 @@ def trans( idl, libDir = None ):
                 # END IF
                 
                 # PLOT SERIES: plot/oplot
-                regexr = regex_avoid(r'^\s*o?plot *,', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'^\s*o?plot\s*,', bevItUp.lower(), skipums); # Regex it
                 if( regexr is not None ):
                     # oplot just means add it to a new axis, so whatever
                     FLG_is_oplot = 'oplot' in bevItUp[regexr.start():regexr.end()].lower(); # Is it oplot instead of plot?
@@ -3120,6 +4003,9 @@ def trans( idl, libDir = None ):
                             elif( '7' == eq_ops[jj][eq_ops[jj].find('=')+1:].strip(' ') ):
                                 plt_symbol = "'X'"; # It's time
                                 plt_lineStyle = "'None'"; # No line to go with, it's a scatter with extra steps!
+                            elif( '10' == eq_ops[jj][eq_ops[jj].find('=')+1:].strip(' ') ):
+                                plt_symbol = None; # It's time
+                                plt_lineStyle = "'-'"; # No line to go with, it's a scatter with extra steps!
                             else:
                                 print('ERROR: Unsupported psym plot option. Fix it.');
                                 breakpoint(); # Trying this out
@@ -3139,6 +4025,8 @@ def trans( idl, libDir = None ):
                             pass # Don't care
                         elif( 'ymargin' == eq_ops[jj][0:7].lower() ):
                             pass
+                        elif( 'title' == eq_ops[jj][0:5].lower() ):
+                            lines2add.append( 'ax.set_title( '+eq_ops[jj][eq_ops[jj].find('=')+1:]+' )' ); #set x axis title
                         elif( 'xtitle' == eq_ops[jj][0:6].lower() ):
                             lines2add.append( 'ax.set_xlabel( '+eq_ops[jj][eq_ops[jj].find('=')+1:]+' )' ); #set x axis title
                         elif( 'ytitle' == eq_ops[jj][0:6].lower() ):
@@ -3147,6 +4035,8 @@ def trans( idl, libDir = None ):
                             pass # For now, these seem superfluous
                         elif( 'ystyle' == eq_ops[jj][0:6].lower() ):
                             pass
+                        elif( 'linestyle' == eq_ops[jj][0:9].lower() ):
+                            lines2add.append( 'ax.set_linestyle( '+eq_ops[jj][eq_ops[jj].find('=')+1:]+' )' ); #set x axis title
                         else:
                             print('ERROR: Unsupported plot option. Fix it.\n'+eq_ops[jj]);
                             breakpoint(); # Trying this out
@@ -3217,7 +4107,7 @@ def trans( idl, libDir = None ):
                 # END IF
                                 
                 # PLOT SERIES: xyouts
-                regexr = regex_avoid(r'^\s*xyouts *,', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'^\s*xyouts\s*,', bevItUp.lower(), skipums); # Regex it
                 if( regexr is not None ):
                     regexr_comment = regex_avoid(r';', bevItUp, None); # Regex it
                     if( regexr_comment is None ):
@@ -3319,7 +4209,7 @@ def trans( idl, libDir = None ):
                 # END IF
                 
                 # PLOT SERIES: write_gif
-                regexr = regex_avoid(r'^\s*write_gif *,', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'^\s*write_gif\s*,', bevItUp.lower(), skipums); # Regex it
                 if( regexr is not None ):
                     regexr_comment = regex_avoid(r';', bevItUp, None); # Regex it
                     if( regexr_comment is None ):
@@ -3415,7 +4305,7 @@ def trans( idl, libDir = None ):
                 # END IF
                 
                 # FITS SERIES: readfits
-                regexr = regex_avoid(r'readfits *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])readfits\s*\(', bevItUp.lower(), skipums); # Regex it
                 if( regexr is not None ):
                     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end(); # Get the matching parenthesis (so we know where it ends)
                     repl = bevItUp[regexr.start():paren_match]; # Get the thing to replace
@@ -3451,7 +4341,7 @@ def trans( idl, libDir = None ):
                 # END IF
                 
                 # FITS SERIES: sxpar
-                regexr = regex_avoid(r'sxpar *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])sxpar\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     repl = bevItUp[regexr.end()-1:]; # Get the thing to replace
                     paren_match = parenthesis_hunter( repl ); # Get the matching parenthesis (so we know where it ends)
@@ -3459,11 +4349,11 @@ def trans( idl, libDir = None ):
                     repl = splitterz(repl[1:paren_match], ',', splitums); # Split it good
                     bevItUp = bevItUp[:regexr.start()]+repl[0]+'['+repl[1]+']'+darest; # Replace the bit!
                     
-                    regexr = regex_avoid(r'sxpar *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])sxpar *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # FITS SERIES: sxaddpar
-                regexr = regex_avoid(r'^\s*sxaddpar *,', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'^\s*sxaddpar\s*,', bevItUp.lower(), skipums); # Regex it
                 if( regexr is not None ):
                     regexr_comment = regex_avoid(r';', bevItUp, None); # Regex it
                     if( regexr_comment is None ):
@@ -3493,7 +4383,7 @@ def trans( idl, libDir = None ):
                 # END IF
                 
                 # readcol
-                regexr = regex_avoid(r'^\s*readcol *,', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'^\s*readcol\s*,', bevItUp.lower(), skipums); # Regex it
                 if( regexr is not None ):
                     regexr_comment = regex_avoid(r';', bevItUp, None); # Regex it
                     if( regexr_comment is None ):
@@ -3604,10 +4494,10 @@ def trans( idl, libDir = None ):
                     codez4later.pop(-1); # Ditch it
                     importz['pd'] = True; # Get it
                 # END IF
-                    
                 
                 #  size
-                regexr = regex_avoid(r'(?<!idl_where_)size *\(', bevItUp.lower(), skipums); # Regex it
+                # regexr = regex_avoid(r'(?:(?<!idl_where_)|[A-Za-z0-9])size *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'['+straddlersR+r']size *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     if( regex_avoid_logic(r', */structure', bevItUp.lower(), skipums) ):
                         regexr_equals = regex_avoid(r'\w+ *=', bevItUp, skipums); # Check for assignment (prob the case)
@@ -3682,31 +4572,31 @@ def trans( idl, libDir = None ):
                                 codez.insert(5+importOffset, '    elif isinstance( var2check, float):');
                                 codez.insert(6+importOffset, '        return "double" if words else 5');
                                 codez.insert(7+importOffset, '    elif isinstance( var2check, (np.ndarray, np.generic)):');
-                                codez.insert(8+importOffset, '        if var2check == np.bool_:');
+                                codez.insert(8+importOffset, '        if var2check.dtype == np.bool_:');
                                 codez.insert(9+importOffset, '            return "byte" if words else 1');
-                                codez.insert(10+importOffset, '        elif var2check == np.int16:');
+                                codez.insert(10+importOffset, '        elif var2check.dtype == np.int16:');
                                 codez.insert(11+importOffset, '            return "int" if words else 2');
-                                codez.insert(12+importOffset, '        elif var2check == np.int32:');
+                                codez.insert(12+importOffset, '        elif var2check.dtype == np.int32:');
                                 codez.insert(13+importOffset, '            return "long" if words else 3');
-                                codez.insert(14+importOffset, '        elif var2check == np.int64:');
+                                codez.insert(14+importOffset, '        elif var2check.dtype == np.int64:');
                                 codez.insert(15+importOffset, '            return "long64" if words else 14');
-                                codez.insert(16+importOffset, '        elif var2check == np.uint16:');
+                                codez.insert(16+importOffset, '        elif var2check.dtype == np.uint16:');
                                 codez.insert(17+importOffset, '            return "uint" if words else 12');
-                                codez.insert(18+importOffset, '        elif var2check == np.uint32:');
+                                codez.insert(18+importOffset, '        elif var2check.dtype == np.uint32:');
                                 codez.insert(19+importOffset, '            return "ulong" if words else 13');
-                                codez.insert(20+importOffset, '        elif var2check == np.uint64:');
+                                codez.insert(20+importOffset, '        elif var2check.dtype == np.uint64:');
                                 codez.insert(21+importOffset, '            return "ulong64" if words else 15');
-                                codez.insert(22+importOffset, '        elif var2check == np.float32:');
+                                codez.insert(22+importOffset, '        elif var2check.dtype == np.float32:');
                                 codez.insert(23+importOffset, '            return "float" if words else 4');
-                                codez.insert(24+importOffset, '        elif var2check == np.float64:');
+                                codez.insert(24+importOffset, '        elif var2check.dtype == np.float64:');
                                 codez.insert(25+importOffset, '            return "double" if words else 5');
-                                codez.insert(26+importOffset, '        elif var2check == np.complex64:');
+                                codez.insert(26+importOffset, '        elif var2check.dtype == np.complex64:');
                                 codez.insert(27+importOffset, '            return "complex" if words else 6');
-                                codez.insert(28+importOffset, '        elif var2check == np.complex128:');
+                                codez.insert(28+importOffset, '        elif var2check.dtype == np.complex128:');
                                 codez.insert(29+importOffset, '            return "dcomplex" if words else 9');
-                                codez.insert(30+importOffset, '        elif var2check == np.int_:');
+                                codez.insert(30+importOffset, '        elif var2check.dtype == np.int_:');
                                 codez.insert(31+importOffset, '            return "long64" if words else 14');
-                                codez.insert(32+importOffset, '        elif var2check == np.float_:');
+                                codez.insert(32+importOffset, '        elif var2check.dtype == np.float_:');
                                 codez.insert(33+importOffset, '            return "double" if words else 5');
                                 codez.insert(34+importOffset, '        # END IF');
                                 codez.insert(35+importOffset, '    elif isinstance( var2check, bool):');
@@ -3834,31 +4724,31 @@ def trans( idl, libDir = None ):
                             codez.insert(5+importOffset, '    elif isinstance( var2check, float):');
                             codez.insert(6+importOffset, '        return "double" if words else 5');
                             codez.insert(7+importOffset, '    elif isinstance( var2check, (np.ndarray, np.generic)):');
-                            codez.insert(8+importOffset, '        if var2check == np.bool_:');
+                            codez.insert(8+importOffset, '        if var2check.dtype == np.bool_:');
                             codez.insert(9+importOffset, '            return "byte" if words else 1');
-                            codez.insert(10+importOffset, '        elif var2check == np.int16:');
+                            codez.insert(10+importOffset, '        elif var2check.dtype == np.int16:');
                             codez.insert(11+importOffset, '            return "int" if words else 2');
-                            codez.insert(12+importOffset, '        elif var2check == np.int32:');
+                            codez.insert(12+importOffset, '        elif var2check.dtype == np.int32:');
                             codez.insert(13+importOffset, '            return "long" if words else 3');
-                            codez.insert(14+importOffset, '        elif var2check == np.int64:');
+                            codez.insert(14+importOffset, '        elif var2check.dtype == np.int64:');
                             codez.insert(15+importOffset, '            return "long64" if words else 14');
-                            codez.insert(16+importOffset, '        elif var2check == np.uint16:');
+                            codez.insert(16+importOffset, '        elif var2check.dtype == np.uint16:');
                             codez.insert(17+importOffset, '            return "uint" if words else 12');
-                            codez.insert(18+importOffset, '        elif var2check == np.uint32:');
+                            codez.insert(18+importOffset, '        elif var2check.dtype == np.uint32:');
                             codez.insert(19+importOffset, '            return "ulong" if words else 13');
-                            codez.insert(20+importOffset, '        elif var2check == np.uint64:');
+                            codez.insert(20+importOffset, '        elif var2check.dtype == np.uint64:');
                             codez.insert(21+importOffset, '            return "ulong64" if words else 15');
-                            codez.insert(22+importOffset, '        elif var2check == np.float32:');
+                            codez.insert(22+importOffset, '        elif var2check.dtype == np.float32:');
                             codez.insert(23+importOffset, '            return "float" if words else 4');
-                            codez.insert(24+importOffset, '        elif var2check == np.float64:');
+                            codez.insert(24+importOffset, '        elif var2check.dtype == np.float64:');
                             codez.insert(25+importOffset, '            return "double" if words else 5');
-                            codez.insert(26+importOffset, '        elif var2check == np.complex64:');
+                            codez.insert(26+importOffset, '        elif var2check.dtype == np.complex64:');
                             codez.insert(27+importOffset, '            return "complex" if words else 6');
-                            codez.insert(28+importOffset, '        elif var2check == np.complex128:');
+                            codez.insert(28+importOffset, '        elif var2check.dtype == np.complex128:');
                             codez.insert(29+importOffset, '            return "dcomplex" if words else 9');
-                            codez.insert(30+importOffset, '        elif var2check == np.int_:');
+                            codez.insert(30+importOffset, '        elif var2check.dtype == np.int_:');
                             codez.insert(31+importOffset, '            return "long64" if words else 14');
-                            codez.insert(32+importOffset, '        elif var2check == np.float_:');
+                            codez.insert(32+importOffset, '        elif var2check.dtype == np.float_:');
                             codez.insert(33+importOffset, '            return "double" if words else 5');
                             codez.insert(34+importOffset, '        # END IF');
                             codez.insert(35+importOffset, '    elif isinstance( var2check, bool):');
@@ -3881,8 +4771,8 @@ def trans( idl, libDir = None ):
                         #     print('different size($VAR, \type) than seen before:\n'+bevItUp);
                         #     breakpoint();
                         # # END IF        
-                    elif( regex_avoid_logic(r', */n_dimen', bevItUp.lower(), skipums) ):
-                        regexr_type = regex_avoid(r', */n_dimen *\)', bevItUp.lower(), skipums); # Get where we at
+                    elif( regex_avoid_logic(r', */n_dimen(?:sions *| *)\)', bevItUp.lower(), skipums) ):
+                        regexr_type = regex_avoid(r', */n_dimen(?:sions *| *)\)', bevItUp.lower(), skipums); # Get where we at
                         var2check = bevItUp[regexr.end():regexr_type.start()]; # Get the var to check
                         bevItUp = strreplace(bevItUp, regexr.start(), regexr_type.end(), 'idl_size_general( '+var2check+', FLG_n_dim=True )'); # Bazam
                         
@@ -4002,31 +4892,31 @@ def trans( idl, libDir = None ):
                             codez.insert(5+importOffset, '    elif isinstance( var2check, float):');
                             codez.insert(6+importOffset, '        return "double" if words else 5');
                             codez.insert(7+importOffset, '    elif isinstance( var2check, (np.ndarray, np.generic)):');
-                            codez.insert(8+importOffset, '        if var2check == np.bool_:');
+                            codez.insert(8+importOffset, '        if var2check.dtype == np.bool_:');
                             codez.insert(9+importOffset, '            return "byte" if words else 1');
-                            codez.insert(10+importOffset, '        elif var2check == np.int16:');
+                            codez.insert(10+importOffset, '        elif var2check.dtype == np.int16:');
                             codez.insert(11+importOffset, '            return "int" if words else 2');
-                            codez.insert(12+importOffset, '        elif var2check == np.int32:');
+                            codez.insert(12+importOffset, '        elif var2check.dtype == np.int32:');
                             codez.insert(13+importOffset, '            return "long" if words else 3');
-                            codez.insert(14+importOffset, '        elif var2check == np.int64:');
+                            codez.insert(14+importOffset, '        elif var2check.dtype == np.int64:');
                             codez.insert(15+importOffset, '            return "long64" if words else 14');
-                            codez.insert(16+importOffset, '        elif var2check == np.uint16:');
+                            codez.insert(16+importOffset, '        elif var2check.dtype == np.uint16:');
                             codez.insert(17+importOffset, '            return "uint" if words else 12');
-                            codez.insert(18+importOffset, '        elif var2check == np.uint32:');
+                            codez.insert(18+importOffset, '        elif var2check.dtype == np.uint32:');
                             codez.insert(19+importOffset, '            return "ulong" if words else 13');
-                            codez.insert(20+importOffset, '        elif var2check == np.uint64:');
+                            codez.insert(20+importOffset, '        elif var2check.dtype == np.uint64:');
                             codez.insert(21+importOffset, '            return "ulong64" if words else 15');
-                            codez.insert(22+importOffset, '        elif var2check == np.float32:');
+                            codez.insert(22+importOffset, '        elif var2check.dtype == np.float32:');
                             codez.insert(23+importOffset, '            return "float" if words else 4');
-                            codez.insert(24+importOffset, '        elif var2check == np.float64:');
+                            codez.insert(24+importOffset, '        elif var2check.dtype == np.float64:');
                             codez.insert(25+importOffset, '            return "double" if words else 5');
-                            codez.insert(26+importOffset, '        elif var2check == np.complex64:');
+                            codez.insert(26+importOffset, '        elif var2check.dtype == np.complex64:');
                             codez.insert(27+importOffset, '            return "complex" if words else 6');
-                            codez.insert(28+importOffset, '        elif var2check == np.complex128:');
+                            codez.insert(28+importOffset, '        elif var2check.dtype == np.complex128:');
                             codez.insert(29+importOffset, '            return "dcomplex" if words else 9');
-                            codez.insert(30+importOffset, '        elif var2check == np.int_:');
+                            codez.insert(30+importOffset, '        elif var2check.dtype == np.int_:');
                             codez.insert(31+importOffset, '            return "long64" if words else 14');
-                            codez.insert(32+importOffset, '        elif var2check == np.float_:');
+                            codez.insert(32+importOffset, '        elif var2check.dtype == np.float_:');
                             codez.insert(33+importOffset, '            return "double" if words else 5');
                             codez.insert(34+importOffset, '        # END IF');
                             codez.insert(35+importOffset, '    elif isinstance( var2check, bool):');
@@ -4048,19 +4938,78 @@ def trans( idl, libDir = None ):
                     else:
                         regexr_equals = regex_avoid(r'\w+ *=', bevItUp, skipums); # Check for assignment (prob the case)
                         origVar = bevItUp[regexr.end():bevItUp[regexr.end():].find(')')+regexr.end()]; # Get the orig var
-                        var2check = bevItUp[regexr_equals.start():regexr_equals.end()-1].rstrip(' ');
-                        # Rebuild as needed, typecode of 0 no support for that
-                        bevItUp = bevItUp[regexr_equals.start():regexr_equals.end()] + \
-                            ' ['+origVar+'.ndim, 0, '+origVar+'.size]';
-                        idl.insert(i+1, '[sz.insert(1, shapeDim) for shapeDim in '+origVar+'.shape]'); # Add in a new line for later, it's python
-                        fend += 1; # More fend to cover
+                        if( '(' in origVar ):
+                            origVarMoffset = parenthesis_hunter(bevItUp[regexr.end():]); # Get the offset b/c it's like var(1) but it was detected as var(1)
+                            origVar = bevItUp[regexr.end():regexr.end() + origVarMoffset + 1]; # Get the real orig var
+                        else:
+                            origVarMoffset = 0; # No offset needed
+                        # END IF
+                        if( regexr_equals is not None ):
+                            var2check = bevItUp[regexr_equals.start():regexr_equals.end()-1].rstrip(' ');
+                            # Rebuild as needed, typecode of 0 no support for that
+                            bevItUp = bevItUp[regexr_equals.start():regexr_equals.end()] + \
+                                ' ['+origVar+'.ndim, 0, '+origVar+'.size]';
+                            idl.insert(i+1, '[sz.insert(1, shapeDim) for shapeDim in '+origVar+'.shape]'); # Add in a new line for later, it's python
+                            fend += 1; # More fend to cover
+                        else:
+                            # If not assigment then it's prob in-line
+                            if( FLG_FUN_idl_size_type == False ):
+                                # Get cooking
+                                codez.insert(0+importOffset, 'def idl_size_type( var2check, words=False ):');
+                                codez.insert(1+importOffset, '    if isinstance( var2check, str):');
+                                codez.insert(2+importOffset, '        return "string" if words else 7');
+                                codez.insert(3+importOffset, '    elif isinstance( var2check, int):');
+                                codez.insert(4+importOffset, '        return "long64" if words else 14');
+                                codez.insert(5+importOffset, '    elif isinstance( var2check, float):');
+                                codez.insert(6+importOffset, '        return "double" if words else 5');
+                                codez.insert(7+importOffset, '    elif isinstance( var2check, (np.ndarray, np.generic)):');
+                                codez.insert(8+importOffset, '        if var2check.dtype == np.bool_:');
+                                codez.insert(9+importOffset, '            return "byte" if words else 1');
+                                codez.insert(10+importOffset, '        elif var2check.dtype == np.int16:');
+                                codez.insert(11+importOffset, '            return "int" if words else 2');
+                                codez.insert(12+importOffset, '        elif var2check.dtype == np.int32:');
+                                codez.insert(13+importOffset, '            return "long" if words else 3');
+                                codez.insert(14+importOffset, '        elif var2check.dtype == np.int64:');
+                                codez.insert(15+importOffset, '            return "long64" if words else 14');
+                                codez.insert(16+importOffset, '        elif var2check.dtype == np.uint16:');
+                                codez.insert(17+importOffset, '            return "uint" if words else 12');
+                                codez.insert(18+importOffset, '        elif var2check.dtype == np.uint32:');
+                                codez.insert(19+importOffset, '            return "ulong" if words else 13');
+                                codez.insert(20+importOffset, '        elif var2check.dtype == np.uint64:');
+                                codez.insert(21+importOffset, '            return "ulong64" if words else 15');
+                                codez.insert(22+importOffset, '        elif var2check.dtype == np.float32:');
+                                codez.insert(23+importOffset, '            return "float" if words else 4');
+                                codez.insert(24+importOffset, '        elif var2check.dtype == np.float64:');
+                                codez.insert(25+importOffset, '            return "double" if words else 5');
+                                codez.insert(26+importOffset, '        elif var2check.dtype == np.complex64:');
+                                codez.insert(27+importOffset, '            return "complex" if words else 6');
+                                codez.insert(28+importOffset, '        elif var2check.dtype == np.complex128:');
+                                codez.insert(29+importOffset, '            return "dcomplex" if words else 9');
+                                codez.insert(30+importOffset, '        elif var2check.dtype == np.int_:');
+                                codez.insert(31+importOffset, '            return "long64" if words else 14');
+                                codez.insert(32+importOffset, '        elif var2check.dtype == np.float_:');
+                                codez.insert(33+importOffset, '            return "double" if words else 5');
+                                codez.insert(34+importOffset, '        # END IF');
+                                codez.insert(35+importOffset, '    elif isinstance( var2check, bool):');
+                                codez.insert(36+importOffset, '        return "byte" if words else 1');
+                                codez.insert(37+importOffset, '    elif isinstance( var2check, complex):');
+                                codez.insert(38+importOffset, '        return "dcomplex" if words else 9');
+                                codez.insert(39+importOffset, '    # END IF');
+                                codez.insert(40+importOffset, '# END DEF');
+                                codez.insert(41+importOffset, '');
+                                
+                                importz['np'] = True; # It's needed
+                                FLG_FUN_idl_size_type = True; # It's been added
+                            # END IF
+                            bevItUp = strreplace( bevItUp, regexr.start(), origVarMoffset+regexr.end()+1, ' ['+origVar+'.ndim] + list('+origVar+'.shape) + [idl_size_type('+origVar+'), '+origVar+'.size] ')
+                        # END IF
                     # END IF
                     
-                    regexr = regex_avoid(r'size *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!idl_where_)|[A-Za-z0-9])size\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # get_kbrd()
-                regexr = regex_avoid(r'get_kbrd *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])get_kbrd\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     if( FLG_FUN_idl_wait_key == False ):
                         # Get cooking
@@ -4096,11 +5045,11 @@ def trans( idl, libDir = None ):
                     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end(); # Get the matching parenthesis (so we know where it ends)
                     bevItUp = strreplace(bevItUp, regexr.start(), paren_match, 'wait_key()'); # Bazam
                     
-                    regexr = regex_avoid(r'get_kbrd *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])get_kbrd\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                     
                 # strcompress
-                regexr = regex_avoid(r'strcompress *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])strcompress\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     if( FLG_FUN_idl_strcompress == False ):
                         # Get cooking
@@ -4133,16 +5082,16 @@ def trans( idl, libDir = None ):
                     if( regexr_removall is not None ):
                         bevItUp = strreplace( bevItUp, regexr_removall.start(), regexr_removall.end(), 'remove_all = True' ); # Replace the bit!
                     # END IF
-                    regexr = regex_avoid(r'strcompress *\(', bevItUp.lower(), skipums, stepUp=fixr); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])strcompress\s*\(', bevItUp.lower(), skipums, stepUp=fixr); # Regex it
                 # END WHILE
                 
                 # fltarr
-                regexr = regex_avoid(r'fltarr *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])fltarr\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     regexr_empty = regex_avoid(r', */nozero', bevItUp.lower(), skipums); # Regex it
                     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
                     reals = splitterz( bevItUp[regexr.end():paren_match], ',', splitums );
-
+                    resty = bevItUp[paren_match+1:]; # Get the rest
                     if( regexr_empty is not None ):
                         for jj in range(len(reals)-1, 0, -1):
                             if( '/nozero' in reals[jj] ):
@@ -4171,13 +5120,13 @@ def trans( idl, libDir = None ):
                             bevItUp = bevItUp[:-2]+')'; # Bam
                         # END IF
                     # END IF
-                    bevItUp += ', dtype=np.float32)'; # Replace the bit!
+                    bevItUp += ', dtype=np.float32) '+resty; # Replace the bits!
                     importz['np'] = True; # It's needed
-                    regexr = regex_avoid(r'fltarr *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])fltarr\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # intarr
-                regexr = regex_avoid(r'intarr *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])intarr\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     regexr_empty = regex_avoid(r', */nozero', bevItUp.lower(), skipums); # Regex it
                     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
@@ -4213,11 +5162,34 @@ def trans( idl, libDir = None ):
                     # END IF
                     bevItUp += ', dtype=np.int32)'; # Replace the bit!
                     importz['np'] = True; # It's needed
-                    regexr = regex_avoid(r'intarr *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])intarr\s*\(', bevItUp.lower(), skipums); # Regex it
+                # END WHILE
+                
+                # strarr -> to object, basically an array that holds strings, best representation is object
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])strarr\s*\(', bevItUp.lower(), skipums); # Regex it
+                while( regexr is not None ):
+                    paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
+                    reals = splitterz( bevItUp[regexr.end():paren_match], ',', splitums );
+                    resty = bevItUp[paren_match+1:]; # Get the rest
+                    
+                    bevItUp = bevItUp[:regexr.start()]+' np.full('; # Replace the bit!
+                    if( len(reals) == 1 ):
+                        bevItUp += reals[0]; # Bam
+                    else:
+                        bevItUp += '('; # Bam
+                        for jj in range(0, len(reals)):
+                            bevItUp += reals[jj]+', '; # Build the parenthesis stuff
+                        # END FOR jj
+                        bevItUp = bevItUp[:-2]+')'; # Bam
+                    # END IF
+                    
+                    bevItUp += ', \'\', dtype=np.dtypes.StringDType()) '+resty; # Replace the bits!
+                    importz['np'] = True; # It's needed
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])strarr\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # findgen
-                regexr = regex_avoid(r'findgen *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])findgen\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
                     regexr_paren = regex_avoid(r',', bevItUp[regexr.end():paren_match].lower(), skipums); # Regex it
@@ -4229,11 +5201,11 @@ def trans( idl, libDir = None ):
                     # END IF
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.arange(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
-                    regexr = regex_avoid(r'findgen *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])findgen\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # dindgen
-                regexr = regex_avoid(r'dindgen *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])dindgen\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
                     regexr_paren = regex_avoid(r',', bevItUp[regexr.end():paren_match].lower(), skipums); # Regex it
@@ -4245,11 +5217,11 @@ def trans( idl, libDir = None ):
                     # END IF
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.arange(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
-                    regexr = regex_avoid(r'dindgen *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])dindgen\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # replicate
-                regexr = regex_avoid(r'replicate *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])replicate\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
                     reals = splitterz( bevItUp[regexr.end():paren_match], ',', splitums );
@@ -4269,11 +5241,11 @@ def trans( idl, libDir = None ):
                         bevItUp = bevItUp[:-2]+' ))'+endy; # Finish it off
                     # END IF
                     importz['np'] = True; # It's needed
-                    regexr = regex_avoid(r'replicate *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])replicate\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # total
-                regexr = regex_avoid(r'total *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])total\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.sum(' ); # Replace the bit!
                     regexr = regex_avoid(r', */double', bevItUp.lower(), skipums); # Regex it
@@ -4281,11 +5253,11 @@ def trans( idl, libDir = None ):
                         bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), ', dtype=np.float64' ); # Replace the bit!
                     # END IF
                     importz['np'] = True; # It's needed
-                    regexr = regex_avoid(r'total *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])total\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # round
-                regexr = regex_avoid(r'round *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])ound\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.round(' ); # Replace the bit!
                     regexr64 = regex_avoid(r', */l64', bevItUp.lower(), skipums); # Regex it
@@ -4300,11 +5272,11 @@ def trans( idl, libDir = None ):
                         bevItUp = strinsert( bevItUp, endparenth, '.astype(np.int32)' );
                     # END IF
                     importz['np'] = True; # It's needed
-                    regexr = regex_avoid(r'(?<!np\.)round *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])round\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # max
-                regexr = regex_avoid(r'(?<!np\.)max *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])max\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.max(' ); # Replace the bit!
                     regexrM = regex_avoid(r', *min=', bevItUp.lower(), skipums); # Regex it
@@ -4330,11 +5302,11 @@ def trans( idl, libDir = None ):
                         fend += 4; # More fend to cover
                     # END IF
                     importz['np'] = True; # It's needed
-                    regexr = regex_avoid(r'(?<!np\.)max *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])max\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # min
-                regexr = regex_avoid(r'(?<!np\.)min *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])min\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.min(' ); # Replace the bit!
                     regexrM = regex_avoid(r', *max=', bevItUp.lower(), skipums); # Regex it
@@ -4348,7 +5320,7 @@ def trans( idl, libDir = None ):
                         fend += 1; # More fend to cover
                     # END IF
                     importz['np'] = True; # It's needed
-                    regexr = regex_avoid(r'(?<!np\.)min *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])min\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                             
                 # > or < catches (MUST OCCUR BEFORE LT/GT/GE/LE)
@@ -4412,7 +5384,7 @@ def trans( idl, libDir = None ):
                 # END WHILE
                                        
                 # where
-                regexr = regex_avoid(r'where *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])where\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     # Check for size request
                     paren_match = parenthesis_hunter(bevItUp[regexr.start():]) + regexr.start() + 1; # More magicks
@@ -4447,11 +5419,11 @@ def trans( idl, libDir = None ):
                     # END IF
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.where(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
-                    regexr = regex_avoid(r'(?<!np\.)where *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])where\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # moment
-                regexr = regex_avoid(r'moment *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])moment\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     
                     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
@@ -4462,11 +5434,11 @@ def trans( idl, libDir = None ):
                     importz['np'] = True; # It's needed
                     importz['scipy'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'moment *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])moment\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # convol - note, in the rest of the world "convolve" in IDL is "correlate", so "correlate" calls are used to make it ez pz!!!
-                regexr = regex_avoid(r'convol *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])convol\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
                     relp = bevItUp[regexr.end():paren_match].strip(' '); # Get the var to deal with
@@ -4493,16 +5465,16 @@ def trans( idl, libDir = None ):
                         # Side step the python<->idl issues
                         if( FLG_FUN_idl_convol == False ):
                             codez.insert(0+importOffset, 'def idl_convol( var2conv, conv_kornel ): # Code that matches what CONVOL does in IDL')
-                            codez.insert(6+importOffset, '    var_convd = scipy.signal.correlate(var2conv, conv_kornel, mode=\'valid\')')
-                            codez.insert(7+importOffset, '    if( var2conv.shape != var_convd.shape ): # Pad as needed back to original size')
-                            codez.insert(8+importOffset, '        pad2pad = np.array(var2conv.shape) - np.array(var_convd.shape)')
-                            codez.insert(9+importOffset, '        pad2pad_floor = np.floor(pad2pad/2).astype(np.int64)')
-                            codez.insert(10+importOffset, '        pad2pad_ceil = np.ceil(pad2pad/2).astype(np.int64)')
-                            codez.insert(11+importOffset, '        var_convd = np.pad(var_convd, ((pad2pad_ceil[0], pad2pad_floor[0]), (pad2pad_ceil[1], pad2pad_floor[1])))')
-                            codez.insert(12+importOffset, '    # END IF')
-                            codez.insert(13+importOffset, '    return var_convd')
-                            codez.insert(14+importOffset, '# END DEF')
-                            codez.insert(15+importOffset, '')   
+                            codez.insert(1+importOffset, '    var_convd = scipy.signal.correlate(var2conv, conv_kornel, mode=\'valid\')')
+                            codez.insert(2+importOffset, '    if( var2conv.shape != var_convd.shape ): # Pad as needed back to original size')
+                            codez.insert(3+importOffset, '        pad2pad = np.array(var2conv.shape) - np.array(var_convd.shape)')
+                            codez.insert(4+importOffset, '        pad2pad_floor = np.floor(pad2pad/2).astype(np.int64)')
+                            codez.insert(5+importOffset, '        pad2pad_ceil = np.ceil(pad2pad/2).astype(np.int64)')
+                            codez.insert(6+importOffset, '        var_convd = np.pad(var_convd, ((pad2pad_ceil[0], pad2pad_floor[0]), (pad2pad_ceil[1], pad2pad_floor[1])))')
+                            codez.insert(7+importOffset, '    # END IF')
+                            codez.insert(8+importOffset, '    return var_convd')
+                            codez.insert(9+importOffset, '# END DEF')
+                            codez.insert(10+importOffset, '')   
                             
                             FLG_FUN_idl_convol = True;
                         # END IF
@@ -4525,11 +5497,39 @@ def trans( idl, libDir = None ):
                     importz['np'] = True; # It's needed
                     importz['scipy'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'convol *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])convol\s*\(', bevItUp.lower(), skipums); # Regex it
+                # END WHILE
+                
+                # ishft - note, in the rest of the world "convolve" in IDL is "correlate", so "correlate" calls are used to make it ez pz!!!
+                regexr = regex_avoid(r'(?:(?<!idl_)|[A-Za-z0-9])ishft\s*\(', bevItUp.lower(), skipums); # Regex it
+                while( regexr is not None ):
+                    paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
+                    relp = bevItUp[regexr.end():paren_match].strip(' '); # Get the var to deal with
+                    
+                    # Split by comma
+                    relp = relp.split(',');
+                    
+                    # Side step the python<->idl issues
+                    if( FLG_FUN_idl_shft == False ):
+                        codez.insert(0+importOffset, 'def idl_ishft( var2shift, shift2shift ): # Code that matches what ISHFT does in IDL')
+                        codez.insert(1+importOffset, '    if( shift2shift < 0 ):')
+                        codez.insert(2+importOffset, '        var2shift = var2shift >> abs(shift2shift)')
+                        codez.insert(3+importOffset, '    else:')
+                        codez.insert(4+importOffset, '        var2shift = var2shift << shift2shift')
+                        codez.insert(5+importOffset, '    # END IF')
+                        codez.insert(6+importOffset, '    return var2shift')
+                        codez.insert(7+importOffset, '# END DEF')
+                        codez.insert(8+importOffset, '')   
+                        
+                        FLG_FUN_idl_shft = True;
+                    # END IF
+                    bevItUp = strreplace(bevItUp, regexr.start(), paren_match+1, 'idl_ishft('+relp[0]+', '+relp[1]+')' ); # Bazam
+                                        
+                    regexr = regex_avoid(r'(?:(?<!idl_)|[A-Za-z0-9])ishft\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # # rot
-                # regexr = regex_avoid(r'rot *\(', bevItUp.lower(), skipums); # Regex it
+                # regexr = regex_avoid(r'(?<![A-Za-z0-9])rot\s*\(', bevItUp.lower(), skipums); # Regex it
                 # while( regexr is not None ):
                 #     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
                 #     relp = bevItUp[regexr.end():paren_match].strip(' '); # Get the var to deal with
@@ -4592,55 +5592,81 @@ def trans( idl, libDir = None ):
                 #     importz['scipy'] = True; # It's needed
                 #     importz['skimage'] = True; # It's needed
                     
-                #     regexr = regex_avoid(r'rot *\(', bevItUp.lower(), skipums); # Regex it
+                #     regexr = regex_avoid(r'(?<![A-Za-z0-9])rot\s*\(', bevItUp.lower(), skipums); # Regex it
                 # # END WHILE
             
                 # --- Simple Stuff(TM) ---
                 # float
-                regexr = regex_avoid(r'float *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])float\s*\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.float32(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'float *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])float\s*\(', bevItUp.lower(), skipums); # Regex it
+                # END WHILE
+                
+                # double
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])double\s*\(', bevItUp.lower(), skipums); # Regex it
+                while( regexr is not None ):
+                    bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.float64(' ); # Replace the bit!
+                    importz['np'] = True; # It's needed
+                    
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])double\s*\(', bevItUp.lower(), skipums); # Regex it
+                # END WHILE
+                
+                # long
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])long\s*\(', bevItUp.lower(), skipums); # Regex it
+                while( regexr is not None ):
+                    bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.int32(' ); # Replace the bit!
+                    importz['np'] = True; # It's needed
+                    
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])long\s*\(', bevItUp.lower(), skipums); # Regex it
+                # END WHILE
+                
+                # byte
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])byte\s*\(', bevItUp.lower(), skipums); # Regex it
+                while( regexr is not None ):
+                    bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'bytes(' ); # Replace the bit!
+                    
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])byte\s*\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # fix
-                regexr = regex_avoid(r'fix *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])fix *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.round(' ); # Replace the bit!
                     # Ensure array is now integers
                     bevItUp = strinsert( bevItUp, parenthesis_hunter(bevItUp[regexr.start():]) + regexr.start() + 1, '.astype(np.int64)');
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'fix *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])fix *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # finite
-                regexr = regex_avoid(r'finite *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])finite *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.isfinite(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'(?<!is)finite *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])finite *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # sqrt
-                regexr = regex_avoid(r'sqrt *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])sqrt *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.sqrt(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'(?<!np\.)sqrt *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])sqrt *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # log10
-                regexr = regex_avoid(r'alog10 *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])alog10 *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.log10(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'alog10 *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])alog10 *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # acos
@@ -4649,29 +5675,29 @@ def trans( idl, libDir = None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.acos(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'(?<!np\.)acos *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])acos *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # asin
-                regexr = regex_avoid(r'asin *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])asin *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.asin(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'(?<!np\.)asin *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])asin *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # atan
-                regexr = regex_avoid(r'atan *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])atan *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.atan(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'(?<!np\.)atan *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])atan *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # cos
-                regexr = regex_avoid(r'(?<!a)cos *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])cos *\(', bevItUp.lower(), skipums); # Regex it
                 fixr = 0;
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.cos('); # Replace the bit!
@@ -4679,11 +5705,11 @@ def trans( idl, libDir = None ):
                     
                     fixr += regexr.end(); # Move it up
                     # regexr = regex_avoid(r'(?<!np\.)cos *\(', bevItUp.lower(), skipums, stepUp = fixr); # Regex it
-                    regexr = regex_avoid(r'(?<!a)cos *\(', bevItUp.lower(), skipums, stepUp = fixr); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])cos *\(', bevItUp.lower(), skipums, stepUp = fixr); # Regex it
                 # END WHILE
                 
                 # sin
-                regexr = regex_avoid(r'(?<!a)sin *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])sin *\(', bevItUp.lower(), skipums); # Regex it
                 fixr = 0;
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.sin('); # Replace the bit!
@@ -4691,7 +5717,7 @@ def trans( idl, libDir = None ):
                     
                     fixr += regexr.end(); # Move it up
                     # regexr = regex_avoid(r'(?<!np\.)sin *\(', bevItUp.lower(), skipums, stepUp = fixr); # Regex it
-                    regexr = regex_avoid(r'(?<!a)sin *\(', bevItUp.lower(), skipums, stepUp = fixr); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])sin *\(', bevItUp.lower(), skipums, stepUp = fixr); # Regex it
                 # END WHILE
                 
                 # tan
@@ -4707,7 +5733,7 @@ def trans( idl, libDir = None ):
                 # END WHILE
                 
                 # reverse
-                regexr = regex_avoid(r'reverse *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])reverse *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
                     relp = bevItUp[regexr.end():paren_match].strip(' '); # Get the var to deal with
@@ -4724,43 +5750,43 @@ def trans( idl, libDir = None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), strang2replace ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'reverse *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])reverse *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # sort
-                regexr = regex_avoid(r'sort *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])sort *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.sort(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'(?<!np\.)sort *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])sort *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # median
-                regexr = regex_avoid(r'median *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])median *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.median(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'(?<!np\.)median *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])median *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # stddev
-                regexr = regex_avoid(r'stddev *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])stddev *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.std(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'stddev *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])stddev *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                                
                 # abs
-                regexr = regex_avoid(r'abs *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])abs *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'np.abs(' ); # Replace the bit!
                     importz['np'] = True; # It's needed
                     
-                    regexr = regex_avoid(r'(?<!np\.)abs *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?:(?<!np\.)|[A-Za-z0-9])abs *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # stop
@@ -4772,22 +5798,22 @@ def trans( idl, libDir = None ):
                 # END WHILE
                                 
                 # string
-                regexr = regex_avoid(r'string *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])string *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'str(' ); # Replace the bit!
                     
-                    regexr = regex_avoid(r'string *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])string *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
                 # repstr
-                regexr = regex_avoid(r'repstr *\(', bevItUp.lower(), skipums); # Regex it
+                regexr = regex_avoid(r'(?<![A-Za-z0-9])repstr *\(', bevItUp.lower(), skipums); # Regex it
                 while( regexr is not None ):
                     paren_match = parenthesis_hunter( bevItUp[regexr.end()-1:] )+regexr.end()-1; # Get the matching parenthesis (so we know where it ends)
                     relp = bevItUp[regexr.end():paren_match].strip(' '); # Get the var to deal with
                     relp = splitterz(relp, ',', splitums); # Split but good
                     
                     bevItUp = strreplace(bevItUp, regexr.start(), paren_match+1, relp[0]+'.replace( '+relp[1]+', '+relp[2]+' )' ); # Bazam
-                    regexr = regex_avoid(r'repstr *\(', bevItUp.lower(), skipums); # Regex it
+                    regexr = regex_avoid(r'(?<![A-Za-z0-9])repstr *\(', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
             
                 # LT
@@ -4838,6 +5864,15 @@ def trans( idl, libDir = None ):
                     regexr = regex_avoid(r'(\s+ne\s+)', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
                 
+                # !Version.OS
+                regexr = regex_avoid(r'['+straddlersR+r']!version\.os['+straddlersR+']', bevItUp.lower(), skipums); # Regex it
+                while( regexr is not None ):
+                    bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'sys.platform' ); # Replace the bit!
+                    importz['sys'] = True; # It's needed
+                    
+                    regexr = regex_avoid(r'['+straddlersR+r']!version\.os['+straddlersR+']', bevItUp.lower(), skipums); # Regex it
+                # END WHILE
+                
                 # Remove still present / stuff, used as a switch for functions
                 regexr = regex_avoid(r', */[a-zA-Z_]+', bevItUp, skipums); # Regex it
                 while( regexr is not None ):
@@ -4854,6 +5889,14 @@ def trans( idl, libDir = None ):
                 
                     regexr = regex_avoid(r'\s*\$(\s|\\n|\\t)*', bevItUp.lower(), skipums); # Regex it
                 # END WHILE
+                
+                # --- Convert function calls to Python style function calls
+                regexr = regex_avoid(r'^\s*[A-Za-z0-9]+\s*,', bevItUp, skipums); # Regex it
+                if( regexr is not None ):
+                    regexr_endo = regex_avoid(r'(?:\s*$|\s*;.*$)', bevItUp, None); # Regex it
+                    bevItUp = bevItUp[:regexr.end()-1]+'( '+bevItUp[regexr.end():regexr_endo.start()]+' ) '+bevItUp[regexr_endo.start():]; # Rebuild but better
+                # END IF
+                # ---
                     
                 # end!
                 regexrL = regex_avoid_logic(r'^\s*(?:end[ ;]|end$)', bevItUp.lower(), skipums) and strisin( bevItUp.lstrip('\t').lstrip(' ').lower(), 'end', straddlers ); # Regex it
@@ -4882,10 +5925,23 @@ def trans( idl, libDir = None ):
                     regexr = regex_avoid(r'\[.*:.*\]', bevItUp, skipums, stepUp = fixr); # Regex it (deals with more in the same line)
                 # END WHILE
                 
-                # Convert else@ to else:, basically it turns out the switch statement uses else: so python'd else: is recorded as else@ to tell the difference!
-                regexr = regex_avoid(r'else@', bevItUp.lower(), skipums); # Regex it
+                # Convert @else@ to else:, basically it turns out the switch statement uses else: so python'd else: is recorded as @else@ to tell the difference!
+                regexr = regex_avoid(r'@else@', bevItUp, skipums); # Regex it
                 if( regexr is not None ):
                     bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'else:' ); # Replace the bit!
+                # END IF
+                
+                # Convert el@if to elif, basically it makes it so I can declare it is an elif statement upfront but its unique so a IDL var named elif can't cause problems
+                regexr = regex_avoid(r'el@if', bevItUp, skipums); # Regex it
+                if( regexr is not None ):
+                    bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'elif' ); # Replace the bit!
+                    # spacer -= 4; # MOVE IT BACK NOW
+                # END IF
+                
+                # Convert p@ss to p@ss, basically it makes it so I can declare it is an elif statement upfront but its unique so a IDL var named elif can't cause problems
+                regexr = regex_avoid(r'p@ss', bevItUp, skipums); # Regex it
+                if( regexr is not None ):
+                    bevItUp = strreplace( bevItUp, regexr.start(), regexr.end(), 'pass' ); # Replace the bit!
                 # END IF
                 
                 # --- Enforce spacing ---
@@ -5131,6 +6187,24 @@ def trans( idl, libDir = None ):
             # END IF
         # END FOR jj
         
+        # --- Change variable ()'s to []'s for indexing ---
+        for jj in range(0, len(varDump)):
+            var2check = varDump[jj]; # Check it out
+            for jk in range(defLeopard[i], defJams[i]): # Go through every line and change it
+                fixr = 0; # Prep the fixr
+                regexr_varCheck = regex_avoid(r'(?:['+straddlersR+r']|^)'+var2check+r'\s*\(', codez[jk], skipums_py, stepUp = fixr);
+                while( regexr_varCheck is not None ):                    
+                    parenth_matchr = parenthesis_hunter( codez[jk][regexr_varCheck.start()+1:] ); # Find the matching parentheses location
+                    
+                    codez[jk] = strreplace( codez[jk], regexr_varCheck.start()+1+len(regexr_varCheck.group())-2, regexr_varCheck.start()+1+len(regexr_varCheck.group())-2+1, '[' ); # Re[;ace starting parenthesis
+                    codez[jk] = strreplace( codez[jk], regexr_varCheck.start()+1+parenth_matchr, regexr_varCheck.start()+1+parenth_matchr+1, ']' ); # Replace ending parenthesis
+                                        
+                    fixr = regexr_varCheck.end(); # Move it up past this one
+                    regexr_varCheck = regex_avoid(r'(?:['+straddlersR+r']|^)'+var2check+r'\s*\(', codez[jk], skipums_py, stepUp = fixr);
+                # END WHILE
+            # END FOR 
+        # END FOR jj
+        
         # --- Now make sure the code uses them correctly ---
         for jj in range(0, len(varDump)):
             jk = endOfDef; # Go to the end of the def, don't need to mod the def
@@ -5214,6 +6288,13 @@ def trans( idl, libDir = None ):
             # END FOR jk
         # END FOR jj
         
+        # Deal with things Python built-ins used that trigger the Python built-in protections
+        for jk in range(defLeopard[i], defJams[i]):
+            varrep_where = codez[jk].find('l@en('); # Find it
+            if( varrep_where > -1 ):
+                codez[jk] = strreplace(codez[jk], varrep_where, varrep_where+5, 'len('); # Replace
+            # END IF
+        # END FOR jk
     # END FOR i
     
     # Deal with global
@@ -5227,12 +6308,7 @@ FLG_validator_files = ['mmm'];
 try:
     fileName = sys.argv[1]
 except:
-    # fileName = 'fits_add_checksum.pro'
-    # fileName = 'mmm.pro'
-    # fileName = 'extast.pro'
-    # fileName = 'mkhdr.pro'
     fileName = 'rot_gdl.pro'
-    # fileName = 'rot_idl.pro'
 # END TRYING
 
 try:
@@ -5255,7 +6331,9 @@ with open(fileName, 'r') as file:
 # --- Rip into it ---
 print('\n--- ON '+fileName+' ---');
 convertedCache = {}; # Prep a dict to hold converted functions so you don't have to do it again (need to know what the converted function's analyzed inputs/outputs are so rearrange the line)
-codez, _ = trans( idl, libDir = os.path.join(cwd, 'converted', 'pylibs') ); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
+globalCache = {}; # Prep a dict to hold converted functions so you don't have to do it again (need to know what the converted function's analyzed inputs/outputs are so rearrange the line)
+# codez, _ = trans( idl, sourceDir = cwd, libDir = os.path.join(cwd, 'converted', 'pylibs'), convertedDir = os.path.join(cwd, 'converted') ); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
+codez, _ = trans( idl, fileRN = fileName[:fileName.find('.pro')], sourceDir = cwd, libDir = os.path.join(cwd, 'converted'), convertedDir = os.path.join(cwd, 'converted') ); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
 
 # --- Save converted Python ---
 filePath_conv = os.path.join(cwd, 'converted', fileName.replace('pro','py')); # Put it in a folder
@@ -5281,7 +6359,8 @@ if( FLG_validator == True ):
         # END WITH
         
         # --- Rip into it ---
-        codezT, _ = trans( idlT, libDir = os.path.join(cwd, 'validator', 'pylibs') ); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
+        # codezT, _ = trans( idlT, sourceDir = cwd, libDir = os.path.join(cwd, 'validator', 'pylibs'), convertedDir = os.path.join(cwd, 'validator') ); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
+        codezT, _ = trans( idlT, fileRN = validator, sourceDir = cwd, libDir = os.path.join(cwd, 'validator'), convertedDir = os.path.join(cwd, 'validator') ); # Translate from IDL to Python (in function form so can recursive if it finds OTHER IDL files)
         
         # --- Read in reference Python file ---
         with open(os.path.join(cwd, 'validator', validator+'_ref.py'), 'r') as file:
